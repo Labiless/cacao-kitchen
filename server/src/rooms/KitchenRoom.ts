@@ -8,6 +8,7 @@ import {
   PLAYER_SPEED,
   Player,
   WORLD,
+  cleanName,
   type InputState,
   type JoinOptions,
 } from "@cacao/shared";
@@ -32,6 +33,12 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       });
     });
 
+    this.onMessage(Message.SetName, (client, name: string) => {
+      const player = this.state.players.get(client.sessionId);
+      const cleaned = cleanName(name);
+      if (player && cleaned) player.name = cleaned;
+    });
+
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
   }
 
@@ -41,7 +48,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     const index = this.state.players.size;
 
     const player = new Player();
-    player.name = String(options?.name ?? "").trim().slice(0, 16) || `Cuoco ${index + 1}`;
+    player.name = cleanName(options?.name) || `Cuoco ${index + 1}`;
     player.color = color;
     player.x = WORLD.width * (index === 0 ? 0.3 : 0.7);
     player.y = WORLD.height / 2;

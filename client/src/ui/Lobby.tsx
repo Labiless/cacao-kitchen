@@ -1,35 +1,25 @@
 import { useState, type FormEvent } from "react";
-import { ROOM_NAME, type JoinOptions, type KitchenState } from "@cacao/shared";
-import { client, waitForState, type KitchenRoom } from "../network.ts";
+import { MAX_NAME_LENGTH, cleanName } from "@cacao/shared";
+import { loadPlayerName } from "../playerName.ts";
+import type { JoinRequest } from "../App.tsx";
 
 interface Props {
-  onJoined: (room: KitchenRoom) => void;
+  busy: boolean;
+  error: string | null;
+  onConnect: (request: JoinRequest, name: string) => void;
 }
 
-export function Lobby({ onJoined }: Props) {
-  const [name, setName] = useState("");
+export function Lobby({ busy, error, onConnect }: Props) {
+  const [name, setName] = useState(loadPlayerName);
   const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function connect(join: (options: JoinOptions) => Promise<KitchenRoom>) {
-    setBusy(true);
-    setError(null);
-    try {
-      onJoined(await waitForState(await join({ name })));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setBusy(false);
-    }
-  }
 
   function createRoom(event: FormEvent) {
     event.preventDefault();
-    connect((options) => client.create<KitchenState>(ROOM_NAME, options));
+    onConnect({ kind: "create" }, cleanName(name));
   }
 
   function joinRoom() {
-    connect((options) => client.joinById<KitchenState>(code.trim(), options));
+    onConnect({ kind: "join", roomId: code.trim() }, cleanName(name));
   }
 
   return (
@@ -38,7 +28,7 @@ export function Lobby({ onJoined }: Props) {
       <form className="card" onSubmit={createRoom}>
         <label>
           Il tuo nome
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={16} placeholder="Cuoco" />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={MAX_NAME_LENGTH} placeholder="Cuoco" />
         </label>
 
         <button type="submit" disabled={busy}>Crea stanza</button>
@@ -53,6 +43,7 @@ export function Lobby({ onJoined }: Props) {
           Entra
         </button>
 
+        {busy && <p className="hint">Connessione…</p>}
         {error && <p className="error">{error}</p>}
       </form>
     </main>

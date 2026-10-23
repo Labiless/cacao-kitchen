@@ -12,8 +12,11 @@ export const PLAYER_SPEED = 220;
 
 export const PLAYER_COLORS = ["#e8833a", "#3aa7a3"] as const;
 
+export const MAX_NAME_LENGTH = 16;
+
 export const Message = {
   Input: "input",
+  SetName: "setName",
 } as const;
 
 /** Keys currently held by a player; sent to the server whenever it changes. */
@@ -25,7 +28,13 @@ export interface InputState {
 }
 
 export interface JoinOptions {
-  name: string;
+  /** Optional: players joining from an invite link pick their name once inside. */
+  name?: string;
+}
+
+/** Trims and caps a player-provided name; returns "" if nothing usable is left. */
+export function cleanName(raw: unknown) {
+  return String(raw ?? "").trim().slice(0, MAX_NAME_LENGTH);
 }
 
 export * from "./state.ts";

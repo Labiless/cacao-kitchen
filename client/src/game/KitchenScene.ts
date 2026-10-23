@@ -25,9 +25,10 @@ export class KitchenScene extends Phaser.Scene {
   create() {
     this.drawFloor();
 
+    // No key capture: otherwise Phaser swallows these keys and they can't be typed into React inputs.
     this.keys = this.input.keyboard!.addKeys({
       up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", w: "W", a: "A", s: "S", d: "D",
-    }) as typeof this.keys;
+    }, false) as typeof this.keys;
 
     const callbacks = Callbacks.get(this.room);
     // Declared up front: onAdd fires synchronously for players already in the room.
@@ -37,7 +38,9 @@ export class KitchenScene extends Phaser.Scene {
         this.addPlayer(sessionId, player);
         unsubscribe.push(callbacks.onChange(player, () => {
           const sprite = this.sprites.get(sessionId);
-          if (sprite) sprite.target = { x: player.x, y: player.y };
+          if (!sprite) return;
+          sprite.target = { x: player.x, y: player.y };
+          sprite.label.setText(this.labelFor(sessionId, player));
         }));
       }),
       callbacks.onRemove("players", (_player, sessionId) => this.removePlayer(sessionId)),
@@ -58,7 +61,8 @@ export class KitchenScene extends Phaser.Scene {
 
   private sendInput() {
     const k = this.keys;
-    const input: InputState = {
+    const typing = document.activeElement instanceof HTMLInputElement;
+    const input: InputState = typing ? { left: false, right: false, up: false, down: false } : {
       left: k.left.isDown || k.a.isDown,
       right: k.right.isDown || k.d.isDown,
       up: k.up.isDown || k.w.isDown,
@@ -79,7 +83,7 @@ export class KitchenScene extends Phaser.Scene {
     if (isMe) body.setStrokeStyle(3, 0x3b2a1e);
 
     const label = this.add
-      .text(player.x, player.y, isMe ? `${player.name} (tu)` : player.name, {
+      .text(player.x, player.y, this.labelFor(sessionId, player), {
         fontFamily: "system-ui, sans-serif",
         fontSize: "14px",
         color: "#3b2a1e",
@@ -87,6 +91,10 @@ export class KitchenScene extends Phaser.Scene {
       .setOrigin(0.5, 1);
 
     this.sprites.set(sessionId, { body, label, target: { x: player.x, y: player.y } });
+  }
+
+  private labelFor(sessionId: string, player: Player) {
+    return sessionId === this.room.sessionId ? `${player.name} (tu)` : player.name;
   }
 
   private removePlayer(sessionId: string) {
