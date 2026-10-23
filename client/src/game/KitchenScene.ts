@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { Callbacks } from "@colyseus/sdk";
 import {
+  ACTIONS,
   Message,
   PLAYER_SIZE,
   ROLE_INFO,
@@ -9,6 +10,7 @@ import {
   WALL,
   WORLD,
   isNearTable,
+  tableActionFor,
   type InputState,
   type Player,
   type Table,
@@ -30,12 +32,18 @@ interface TableSprite {
 /** Draw order: floor < tables < players < labels. */
 const Depth = { Table: 1, Player: 2, Label: 3 } as const;
 
+const TEXT_STYLE = { fontFamily: "system-ui, sans-serif", color: "#3b2a1e" } as const;
+
 /** Fraction of the remaining distance covered per frame at 60 fps. */
 const SMOOTHING = 0.3;
 
 export class KitchenScene extends Phaser.Scene {
   private sprites = new Map<string, PlayerSprite>();
   private tables = new Map<string, TableSprite>();
+  /** Local time (scene clock) at which each player's current action started, to animate its progress bar. */
+  private actionStartedAt = new Map<string, number>();
+  private progressBars!: Phaser.GameObjects.Graphics;
+  private hint!: Phaser.GameObjects.Text;
   private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
   private lastInput: InputState = { left: false, right: false, up: false, down: false };
 
@@ -50,6 +58,14 @@ export class KitchenScene extends Phaser.Scene {
     this.keys = this.input.keyboard!.addKeys({
       up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", w: "W", a: "A", s: "S", d: "D",
     }, false) as typeof this.keys;
+    this.input.keyboard!.on("keydown-E", () => this.interact());
+
+    this.progressBars = this.add.graphics().setDepth(Depth.Label);
+    this.hint = this.add
+      .text(0, 0, "", { ...TEXT_STYLE, fontSize: "13px", backgroundColor: "#fffaf3", padding: { x: 6, y: 3 } })
+      .setOrigin(0.5, 1)
+      .setDepth(Depth.Label)
+      .setVisible(false);
 
     const callbacks = Callbacks.get(this.room);
     // Declared up front: onAdd fires synchronously for players already in the room.
@@ -62,6 +78,10 @@ export class KitchenScene extends Phaser.Scene {
           if (!sprite) return;
           sprite.target = { x: player.x, y: player.y };
           sprite.label.setText(this.labelFor(sessionId, player));
+        }));
+        unsubscribe.push(callbacks.listen(player, "action", (action) => {
+          if (action) this.actionStartedAt.set(sessionId, this.time.now);
+          else this.actionStartedAt.delete(sessionId);
         }));
       }),
       callbacks.onRemove("players", (_player, sessionId) => this.removePlayer(sessionId)),
@@ -83,18 +103,56 @@ export class KitchenScene extends Phaser.Scene {
       label.setPosition(body.x, body.y - PLAYER_SIZE / 2 - 6);
     }
 
-    this.highlightNearbyTables();
+    this.drawInteractionHint();
+    this.drawProgressBars();
   }
 
-  /** Outlines the tables the local waiter could interact with right now. */
-  private highlightNearbyTables() {
+  /** The table the local waiter would act on by pressing E, if any. */
+  private interactableTable() {
     const me = this.room.state.players.get(this.room.sessionId);
     const mySprite = this.sprites.get(this.room.sessionId);
+    if (me?.role !== "hall" || me.action || !mySprite) return null;
+    for (const table of this.room.state.tables.values()) {
+      if (tableActionFor(table.status) && isNearTable(mySprite.body, table)) return table;
+    }
+    return null;
+  }
+
+  private interact() {
+    if (document.activeElement instanceof HTMLInputElement) return;
+    const table = this.interactableTable();
+    if (table) this.room.send(Message.Interact, { tableId: table.id });
+  }
+
+  /** Outlines the table the local waiter can act on and shows which key to press. */
+  private drawInteractionHint() {
+    const target = this.interactableTable();
     for (const [id, { body }] of this.tables) {
-      const table = this.room.state.tables.get(id);
-      const near = me?.role === "hall" && mySprite && table && isNearTable(mySprite.body, table);
-      if (near) body.setStrokeStyle(4, 0xfff3c4);
+      if (id === target?.id) body.setStrokeStyle(4, 0xfff3c4);
       else body.setStrokeStyle();
+    }
+
+    const action = target && tableActionFor(target.status);
+    this.hint.setVisible(!!action);
+    if (target && action) {
+      this.hint.setText(`E · ${ACTIONS[action].label}`).setPosition(target.x, target.y - TABLE_SIZE / 2 - 6);
+    }
+  }
+
+  /** A bar above the target of every action in progress, so both players can see it. */
+  private drawProgressBars() {
+    this.progressBars.clear();
+    for (const [sessionId, startedAt] of this.actionStartedAt) {
+      const player = this.room.state.players.get(sessionId);
+      const table = player && this.room.state.tables.get(player.actionTarget);
+      if (!player?.action || !table) continue;
+
+      const progress = Math.min(1, (this.time.now - startedAt) / ACTIONS[player.action].durationMs);
+      const width = TABLE_SIZE + 10;
+      const x = table.x - width / 2;
+      const y = table.y - TABLE_SIZE / 2 - 14;
+      this.progressBars.fillStyle(0x3b2a1e, 0.8).fillRect(x, y, width, 8);
+      this.progressBars.fillStyle(0x7bd389).fillRect(x + 1, y + 1, (width - 2) * progress, 6);
     }
   }
 
@@ -122,11 +180,7 @@ export class KitchenScene extends Phaser.Scene {
     if (isMe) body.setStrokeStyle(3, 0x3b2a1e);
 
     const label = this.add
-      .text(player.x, player.y, this.labelFor(sessionId, player), {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: "14px",
-        color: "#3b2a1e",
-      })
+      .text(player.x, player.y, this.labelFor(sessionId, player), { ...TEXT_STYLE, fontSize: "14px" })
       .setOrigin(0.5, 1)
       .setDepth(Depth.Label);
 
@@ -136,11 +190,7 @@ export class KitchenScene extends Phaser.Scene {
   private addTable(id: string, table: Table) {
     const body = this.add.rectangle(table.x, table.y, TABLE_SIZE, TABLE_SIZE).setDepth(Depth.Table);
     const label = this.add
-      .text(table.x, table.y + TABLE_SIZE / 2 + 4, "", {
-        fontFamily: "system-ui, sans-serif",
-        fontSize: "12px",
-        color: "#3b2a1e",
-      })
+      .text(table.x, table.y + TABLE_SIZE / 2 + 4, "", { ...TEXT_STYLE, fontSize: "12px" })
       .setOrigin(0.5, 0)
       .setDepth(Depth.Label);
     this.tables.set(id, { body, label });
@@ -164,6 +214,7 @@ export class KitchenScene extends Phaser.Scene {
     sprite?.body.destroy();
     sprite?.label.destroy();
     this.sprites.delete(sessionId);
+    this.actionStartedAt.delete(sessionId);
   }
 
   /** Kitchen tiles on the left, dining hall floorboards on the right, wall in between. */

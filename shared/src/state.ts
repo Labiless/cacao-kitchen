@@ -1,6 +1,7 @@
 import { schema, t, type SchemaType } from "@colyseus/schema";
 import type { Role } from "./index.ts";
 import type { TableStatus } from "./hall.ts";
+import type { ActionId } from "./actions.ts";
 
 export const Player = schema({
   name: t.string(),
@@ -8,6 +9,10 @@ export const Player = schema({
   color: t.string(),
   x: t.number(),
   y: t.number(),
+  /** Action in progress, or "" when idle. */
+  action: t.string<ActionId | "">().default(""),
+  /** Id of the table the action is performed on. */
+  actionTarget: t.string().default(""),
 }, "Player");
 export type Player = SchemaType<typeof Player>;
 

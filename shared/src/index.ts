@@ -1,5 +1,6 @@
 // Values that both the server and the client must agree on.
-// The synced room state (Colyseus Schema) lives in ./state.ts, the dining hall layout in ./hall.ts.
+// The synced room state (Colyseus Schema) lives in ./state.ts, the dining hall layout in ./hall.ts,
+// timed actions in ./actions.ts.
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
@@ -38,7 +39,13 @@ export const MAX_NAME_LENGTH = 16;
 export const Message = {
   Input: "input",
   SetName: "setName",
+  /** Payload: InteractMessage. The server picks the action from the target's current state. */
+  Interact: "interact",
 } as const;
+
+export interface InteractMessage {
+  tableId: string;
+}
 
 /** Keys currently held by a player; sent to the server whenever it changes. */
 export interface InputState {
@@ -62,3 +69,4 @@ export function cleanName(raw: unknown) {
 
 export * from "./state.ts";
 export * from "./hall.ts";
+export * from "./actions.ts";

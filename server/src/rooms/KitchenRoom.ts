@@ -1,5 +1,6 @@
 import { Room, type Client } from "colyseus";
 import {
+  ACTIONS,
   KitchenState,
   MAX_PLAYERS,
   Message,
@@ -12,15 +13,21 @@ import {
   Table,
   WORLD,
   cleanName,
+  isNearTable,
   isRole,
   overlapsTable,
+  tableActionFor,
   zoneFor,
   type InputState,
+  type InteractMessage,
   type JoinOptions,
   type Role,
 } from "@cacao/shared";
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
+
+/** Temporary: with no customers yet, a cleaned table gets dirty again on its own so cleaning can be tested. */
+const REDIRTY_AFTER_MS = 6000;
 
 export class KitchenRoom extends Room<{ state: KitchenState }> {
   maxClients = MAX_PLAYERS;
@@ -28,6 +35,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   /** Latest input per sessionId. Server-only: not part of the synced state. */
   private heldKeys = new Map<string, InputState>();
+  /** When each player's current action completes, in room clock time. Server-only. */
+  private actionEndsAt = new Map<string, number>();
 
   onCreate() {
     for (const { id, x, y } of TABLE_LAYOUT) {
@@ -35,7 +44,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       table.id = id;
       table.x = x;
       table.y = y;
-      table.status = "free";
+      table.status = "dirty";
       this.state.tables.set(id, table);
     }
 
@@ -53,6 +62,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       const player = this.state.players.get(client.sessionId);
       const cleaned = cleanName(name);
       if (player && cleaned) player.name = cleaned;
+    });
+
+    this.onMessage(Message.Interact, (client, message: InteractMessage) => {
+      this.startTableAction(client.sessionId, String(message?.tableId));
     });
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
@@ -84,28 +97,74 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   onLeave(client: Client) {
     this.state.players.delete(client.sessionId);
     this.heldKeys.delete(client.sessionId);
+    this.actionEndsAt.delete(client.sessionId);
+  }
+
+  private startTableAction(sessionId: string, tableId: string) {
+    const player = this.state.players.get(sessionId);
+    const table = this.state.tables.get(tableId);
+    if (!player || !table || player.role !== "hall" || player.action) return;
+    if (!isNearTable(player, table)) return;
+
+    const action = tableActionFor(table.status);
+    if (!action) return;
+
+    player.action = action;
+    player.actionTarget = tableId;
+    this.actionEndsAt.set(sessionId, this.clock.currentTime + ACTIONS[action].durationMs);
+  }
+
+  /** Completes the player's action when its time is up, or cancels it if it's no longer possible. */
+  private updateAction(sessionId: string, player: Player) {
+    if (!player.action) return;
+    const table = this.state.tables.get(player.actionTarget);
+
+    // Walked away, or the table changed under us: the action is lost.
+    if (!table || !isNearTable(player, table) || tableActionFor(table.status) !== player.action) {
+      this.clearAction(sessionId, player);
+      return;
+    }
+    if (this.clock.currentTime < (this.actionEndsAt.get(sessionId) ?? 0)) return;
+
+    switch (player.action) {
+      case "cleanTable":
+        table.status = "free";
+        this.clock.setTimeout(() => (table.status = "dirty"), REDIRTY_AFTER_MS);
+        break;
+    }
+    this.clearAction(sessionId, player);
+  }
+
+  private clearAction(sessionId: string, player: Player) {
+    player.action = "";
+    player.actionTarget = "";
+    this.actionEndsAt.delete(sessionId);
   }
 
   private update(dt: number) {
-    const half = PLAYER_SIZE / 2;
     this.state.players.forEach((player, sessionId) => {
-      const zone = zoneFor(player.role);
-      const input = this.heldKeys.get(sessionId) ?? NO_INPUT;
-      let dx = Number(input.right) - Number(input.left);
-      let dy = Number(input.down) - Number(input.up);
-      if (dx === 0 && dy === 0) return;
-
-      // Normalize so diagonal movement isn't faster.
-      const length = Math.hypot(dx, dy);
-      dx /= length;
-      dy /= length;
-
-      // One axis at a time, so a player blocked by a table can still slide along it.
-      const nextX = clamp(player.x + dx * PLAYER_SPEED * dt, zone.minX, zone.maxX);
-      if (!this.hitsTable(nextX, player.y)) player.x = nextX;
-      const nextY = clamp(player.y + dy * PLAYER_SPEED * dt, half, WORLD.height - half);
-      if (!this.hitsTable(player.x, nextY)) player.y = nextY;
+      this.movePlayer(player, this.heldKeys.get(sessionId) ?? NO_INPUT, dt);
+      this.updateAction(sessionId, player);
     });
+  }
+
+  private movePlayer(player: Player, input: InputState, dt: number) {
+    let dx = Number(input.right) - Number(input.left);
+    let dy = Number(input.down) - Number(input.up);
+    if (dx === 0 && dy === 0) return;
+
+    // Normalize so diagonal movement isn't faster.
+    const length = Math.hypot(dx, dy);
+    dx /= length;
+    dy /= length;
+
+    // One axis at a time, so a player blocked by a table can still slide along it.
+    const zone = zoneFor(player.role);
+    const half = PLAYER_SIZE / 2;
+    const nextX = clamp(player.x + dx * PLAYER_SPEED * dt, zone.minX, zone.maxX);
+    if (!this.hitsTable(nextX, player.y)) player.x = nextX;
+    const nextY = clamp(player.y + dy * PLAYER_SPEED * dt, half, WORLD.height - half);
+    if (!this.hitsTable(player.x, nextY)) player.y = nextY;
   }
 
   private hitsTable(x: number, y: number) {
