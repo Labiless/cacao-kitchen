@@ -8,12 +8,15 @@ import {
   ENTRANCE,
   FOLLOW_GAP,
   KitchenState,
+  MAX_CUSTOMERS,
   MAX_PLAYERS,
+  MENU,
   MENU_ITEMS,
   Message,
   PLAYER_SIZE,
   PLAYER_SPEED,
   Player,
+  QUEUE_SPOTS,
   RECIPES,
   ROLES,
   ROLE_INFO,
@@ -25,14 +28,17 @@ import {
   availableInteraction,
   canReachCustomer,
   cleanName,
+  customerReadyToPay,
   isIngredient,
   isMenuItem,
   isNearFridge,
   isNearStove,
   freeTicketSlot,
   isNearTicketSlot,
+  isNearRegister,
   isNearTable,
   isRole,
+  overlapsRegister,
   overlapsTable,
   overlapsKitchenFurniture,
   seatPosition,
@@ -56,7 +62,7 @@ const FIRST_CUSTOMER_DELAY_MS = 3000;
 /** Customer statuses that end on their own after a while, and what comes next. */
 const TIMED_STATUSES: Partial<Record<CustomerStatus, { seconds: number; next: CustomerStatus }>> = {
   readingMenu: { seconds: CUSTOMER_TIMING.readingMenuS, next: "readyToOrder" },
-  eating: { seconds: CUSTOMER_TIMING.eatingS, next: "readyToLeave" },
+  eating: { seconds: CUSTOMER_TIMING.eatingS, next: "queuing" },
 };
 
 export class KitchenRoom extends Room<{ state: KitchenState }> {
@@ -217,19 +223,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         this.setCustomerStatus(customer, "readingMenu");
         break;
       }
-      case "escort": {
-        const customer = this.state.customers.get(interaction.customerId)!;
-        // They get up: the table is left dirty.
-        const table = this.state.tables.get(customer.tableId);
-        if (table) table.status = "dirty";
-        customer.tableId = "";
-        customer.waiterId = sessionId;
-        this.setCustomerStatus(customer, "escortedOut");
-        break;
-      }
-      case "farewell":
-        this.sendAway(this.state.customers.get(interaction.customerId)!);
-        break;
       case "putBack":
         player.holding = "";
         break;
@@ -266,7 +259,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         break;
       case "action":
         player.action = interaction.action;
-        player.actionTarget = interaction.tableId;
+        player.actionTarget = interaction.targetId;
         this.actionEndsAt.set(sessionId, this.clock.currentTime + ACTIONS[interaction.action].durationMs);
         break;
     }
@@ -275,10 +268,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   /** Completes the player's action when its time is up, or cancels it if it's no longer possible. */
   private updateAction(sessionId: string, player: Player) {
     if (!player.action) return;
-    const table = this.state.tables.get(player.actionTarget);
 
-    // Walked away, or the table changed under us: the action is lost.
-    if (!table || !isNearTable(player, table) || tableActionFor(table.status) !== player.action) {
+    // Walked away, or the target changed under us: the action is lost.
+    if (!this.canContinueAction(player)) {
       this.clearAction(sessionId, player);
       return;
     }
@@ -286,10 +278,29 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     switch (player.action) {
       case "cleanTable":
-        table.status = "free";
+        this.state.tables.get(player.actionTarget)!.status = "free";
         break;
+      case "checkout": {
+        const customer = this.state.customers.get(player.actionTarget)!;
+        this.state.earnings += MENU[customer.wants].price;
+        this.sendAway(customer);
+        break;
+      }
     }
     this.clearAction(sessionId, player);
+  }
+
+  private canContinueAction(player: Player) {
+    switch (player.action) {
+      case "cleanTable": {
+        const table = this.state.tables.get(player.actionTarget);
+        return !!table && isNearTable(player, table) && tableActionFor(table.status) === "cleanTable";
+      }
+      case "checkout":
+        return isNearRegister(player) && customerReadyToPay(this.state)?.id === player.actionTarget;
+      default:
+        return false;
+    }
   }
 
   private clearAction(sessionId: string, player: Player) {
@@ -330,7 +341,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   private hitsObstacle(x: number, y: number) {
-    if (overlapsKitchenFurniture({ x, y })) return true;
+    if (overlapsKitchenFurniture({ x, y }) || overlapsRegister({ x, y })) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }
@@ -339,10 +350,13 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   private updateCustomers(dt: number) {
     const now = this.clock.currentTime;
-    // One customer at a time for now, and only while someone can serve them.
+    // A new customer every so often, while someone can serve them, the entrance is clear and there's room.
+    const customers = [...this.state.customers.values()];
     const hasWaiter = [...this.state.players.values()].some((p) => p.role === "hall");
-    if (this.state.customers.size === 0 && hasWaiter && now >= this.nextCustomerAt) {
+    const entranceClear = !customers.some((c) => c.status === "waiting");
+    if (hasWaiter && entranceClear && customers.length < MAX_CUSTOMERS && now >= this.nextCustomerAt) {
       this.spawnCustomer();
+      this.nextCustomerAt = now + CUSTOMER_TIMING.spawnIntervalS * 1000;
     }
 
     this.state.customers.forEach((customer) => {
@@ -357,13 +371,13 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
       const timed = TIMED_STATUSES[customer.status];
       if (timed && now >= (this.statusEndsAt.get(customer.id) ?? 0)) {
-        this.setCustomerStatus(customer, timed.next);
+        if (timed.next === "queuing") this.joinQueue(customer);
+        else this.setCustomerStatus(customer, timed.next);
         return;
       }
 
       switch (customer.status) {
-        case "following":
-        case "escortedOut": {
+        case "following": {
           const leader = this.state.players.get(customer.waiterId);
           if (leader) {
             this.follow(customer, leader, dt);
@@ -371,8 +385,14 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
             // Their waiter left the room: they stop where they are and wait for someone else,
             // keeping the patience they had left.
             customer.waiterId = "";
-            customer.status = customer.status === "following" ? "waiting" : "readyToLeave";
+            customer.status = "waiting";
           }
+          break;
+        }
+
+        case "queuing": {
+          const spot = QUEUE_SPOTS[Math.max(0, this.state.queue.indexOf(customer.id))];
+          this.walkTowards(customer, spot, dt);
           break;
         }
 
@@ -412,6 +432,26 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.state.customers.set(customer.id, customer);
   }
 
+  /** Done eating: they get up (leaving the table dirty) and join the queue at the till. */
+  private joinQueue(customer: Customer) {
+    const table = this.state.tables.get(customer.tableId);
+    if (table) table.status = "dirty";
+    customer.tableId = "";
+    this.state.queue.push(customer.id);
+    this.setCustomerStatus(customer, "queuing");
+  }
+
+  /** Moves the customer straight towards `target`, at most one step's worth. */
+  private walkTowards(customer: Customer, target: { x: number; y: number }, dt: number) {
+    const dx = target.x - customer.x;
+    const dy = target.y - customer.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 0.5) return;
+    const step = Math.min(distance, CUSTOMER_SPEED * dt);
+    customer.x += (dx / distance) * step;
+    customer.y += (dy / distance) * step;
+  }
+
   /** Walks towards the leader, stopping just behind them. */
   private follow(customer: Customer, leader: Player, dt: number) {
     const dx = leader.x - customer.x;
@@ -425,20 +465,21 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     customer.y += (dy / distance) * step;
   }
 
-  /** Marks the customer as leaving, then removes them and schedules the next one. Their ticket stays. */
+  /** Marks the customer as leaving, then removes them. Their ticket stays. */
   private sendAway(customer: Customer) {
     customer.status = "leaving";
     customer.waiterId = "";
     this.statusEndsAt.delete(customer.id);
 
+    // Whoever was behind them in the queue moves up.
+    const queued = this.state.queue.indexOf(customer.id);
+    if (queued >= 0) this.state.queue.splice(queued, 1);
+
     // A table they were still sitting at needs cleaning.
     const table = this.state.tables.get(customer.tableId);
     if (table) table.status = "dirty";
 
-    this.clock.setTimeout(() => {
-      this.state.customers.delete(customer.id);
-      this.nextCustomerAt = this.clock.currentTime + CUSTOMER_TIMING.spawnDelayS * 1000;
-    }, CUSTOMER_TIMING.leavingS * 1000);
+    this.clock.setTimeout(() => this.state.customers.delete(customer.id), CUSTOMER_TIMING.leavingS * 1000);
   }
 }
 

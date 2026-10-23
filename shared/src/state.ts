@@ -75,5 +75,9 @@ export const KitchenState = schema({
   stove: Stove,
   /** Dishes waiting on the pass, oldest first. */
   pass: t.array("string"),
+  /** Ids of the customers queuing at the till, front of the queue first. */
+  queue: t.array("string"),
+  /** Money taken at the till so far, in euros. */
+  earnings: t.number().default(0),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;

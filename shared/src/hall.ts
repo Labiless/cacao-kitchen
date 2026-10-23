@@ -24,8 +24,20 @@ export function tableLabel(tableId: string) {
   return TABLE_LAYOUT.find((table) => table.id === tableId)?.label ?? tableId;
 }
 
-/** Doormat where customers come in, wait to be led to a table, and are shown out. */
+/** Doormat where customers come in and wait to be led to a table. */
 export const ENTRANCE = { x: WORLD.width - 40, y: WORLD.height - 50, size: 70 } as const;
+
+/** Till by the exit, across the hall from the entrance: customers queue here to pay before leaving. */
+export const REGISTER = { x: WORLD.width - 50, y: 30, width: 80, height: 40 } as const;
+
+/** Most customers in the restaurant at once; also the length of the queue at the till. */
+export const MAX_CUSTOMERS = 4;
+
+/** Where queuing customers stand, front of the queue first: in a line down from the till. */
+export const QUEUE_SPOTS = Array.from({ length: MAX_CUSTOMERS }, (_, i) => ({
+  x: REGISTER.x,
+  y: REGISTER.y + REGISTER.height / 2 + 8 + 15 + i * 40,
+}));
 
 export const CUSTOMER_SIZE = 30;
 export const CUSTOMER_COLOR = "#b5577a";
@@ -39,13 +51,13 @@ export const CUSTOMER_TIMING = {
    * Seconds of patience in each status where the customer is waiting on the waiter.
    * Patience refills on entering each of these and is paused in every other status.
    */
-  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60, readyToLeave: 30 } as Partial<Record<CustomerStatus, number>>,
+  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60, queuing: 30 } as Partial<Record<CustomerStatus, number>>,
   /** Seconds a seated customer spends reading the menu before they're ready to order. */
   readingMenuS: 4,
-  /** Seconds a customer spends eating before they want to leave. */
+  /** Seconds a customer spends eating before they get up and go pay. */
   eatingS: 6,
-  /** Seconds between a customer leaving and the next one arriving. */
-  spawnDelayS: 4,
+  /** Seconds between one customer arriving and the next, as long as nobody is waiting at the entrance. */
+  spawnIntervalS: 10,
   /** Seconds a leaving customer stays visible, so players see how it went. */
   leavingS: 1.2,
 } as const;
@@ -58,13 +70,11 @@ export const CUSTOMER_TIMING = {
  * ordering     → the waiter is taking their order
  * waitingFood  → order sent, patience running out
  * eating       → food served
- * readyToLeave → done eating, waits at the table to be shown out, patience running out
- * escortedOut  → hooked by the waiter, walks behind them towards the exit
- * leaving      → about to disappear; patience 0 means they left angry
+ * queuing      → done eating: walks to the till and queues to pay, patience running out
+ * leaving      → about to disappear; patience 0 means they left angry (and without paying)
  */
 export const CUSTOMER_STATUSES = [
-  "waiting", "following", "readingMenu", "readyToOrder", "ordering", "waitingFood",
-  "eating", "readyToLeave", "escortedOut", "leaving",
+  "waiting", "following", "readingMenu", "readyToOrder", "ordering", "waitingFood", "eating", "queuing", "leaving",
 ] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
 
@@ -100,9 +110,22 @@ export function isNearCustomer(p: Point, customer: Point) {
   return withinReach(p, PLAYER_SIZE, customer, CUSTOMER_SIZE);
 }
 
-/** Whether a player centered at `p` is close enough to the entrance mat to show a customer out. */
-export function isNearEntrance(p: Point) {
-  return withinReach(p, PLAYER_SIZE, ENTRANCE, ENTRANCE.size);
+/** Whether a player centered at `p` would overlap the till. */
+export function overlapsRegister(p: Point) {
+  return Math.abs(p.x - REGISTER.x) < (PLAYER_SIZE + REGISTER.width) / 2
+    && Math.abs(p.y - REGISTER.y) < (PLAYER_SIZE + REGISTER.height) / 2;
+}
+
+/** Whether a player centered at `p` is close enough to work the till. */
+export function isNearRegister(p: Point) {
+  return Math.abs(p.x - REGISTER.x) <= (PLAYER_SIZE + REGISTER.width) / 2 + INTERACT_DISTANCE
+    && Math.abs(p.y - REGISTER.y) <= (PLAYER_SIZE + REGISTER.height) / 2 + INTERACT_DISTANCE;
+}
+
+/** Whether a customer has reached their queue spot (they walk there on their own). */
+export function isAtQueueSpot(customer: Point, index: number) {
+  const spot = QUEUE_SPOTS[Math.min(index, QUEUE_SPOTS.length - 1)];
+  return Math.hypot(customer.x - spot.x, customer.y - spot.y) < 2;
 }
 
 /** Where a customer sits at a table: on its top edge. */

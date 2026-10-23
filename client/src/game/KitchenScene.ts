@@ -10,7 +10,9 @@ import {
   MENU,
   PASS,
   PASS_CAPACITY,
+  QUEUE_SPOTS,
   RECIPES,
+  REGISTER,
   STOVE,
   Message,
   PLAYER_SIZE,
@@ -87,6 +89,8 @@ export class KitchenScene extends Phaser.Scene {
   /** Local time (scene clock) at which the current dish started cooking, to animate its progress bar. */
   private stoveStartedAt = 0;
   private pass!: Phaser.GameObjects.Rectangle;
+  private register!: Phaser.GameObjects.Rectangle;
+  private earnings!: Phaser.GameObjects.Text;
   /** One icon per spot on the pass. */
   private passDishes: Phaser.GameObjects.Text[] = [];
   /** What the pass icons currently show, to redraw only when it changes. */
@@ -116,6 +120,18 @@ export class KitchenScene extends Phaser.Scene {
       burners.strokeCircle(STOVE.x + dx, STOVE.y + dy, 8);
     }
     this.stoveIcon = this.add.text(STOVE.x, STOVE.y, "", { fontSize: "26px" }).setOrigin(0.5).setDepth(Depth.Label);
+
+    this.register = this.add
+      .rectangle(REGISTER.x, REGISTER.y, REGISTER.width, REGISTER.height, 0x3f6b4f)
+      .setDepth(Depth.Table);
+    this.add
+      .text(REGISTER.x, REGISTER.y, "CASSA", { ...TEXT_STYLE, fontSize: "12px", fontStyle: "bold", color: "#f6efe4" })
+      .setOrigin(0.5)
+      .setDepth(Depth.Table);
+    this.earnings = this.add
+      .text(REGISTER.x - REGISTER.width / 2 - 8, REGISTER.y, "", { ...TEXT_STYLE, fontSize: "14px", fontStyle: "bold" })
+      .setOrigin(1, 0.5)
+      .setDepth(Depth.Label);
 
     // The pass cuts through the wall, so it's drawn on top of it.
     this.pass = this.add.rectangle(PASS.x, PASS.y, PASS.width, PASS.height, 0xc89b6d).setDepth(Depth.Table);
@@ -181,6 +197,8 @@ export class KitchenScene extends Phaser.Scene {
         }));
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
+
+      callbacks.listen("earnings", (earnings) => this.earnings.setText(`Incasso: ${earnings} €`)),
 
       callbacks.listen(this.room.state.stove, "status", (status) => {
         if (status === "cooking") this.stoveStartedAt = this.time.now;
@@ -263,6 +281,8 @@ export class KitchenScene extends Phaser.Scene {
     else this.stove.setStrokeStyle();
     if (target?.kind === "pass") this.pass.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.pass.setStrokeStyle(2, 0x8a5a3b);
+    if (target?.kind === "register") this.register.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.register.setStrokeStyle();
 
     for (const [id, slip] of this.tickets) {
       if (target?.kind === "ticket" && target.id === id) slip.setStrokeStyle(3, 0xe8833a);
@@ -279,7 +299,7 @@ export class KitchenScene extends Phaser.Scene {
     }
   }
 
-  /** The thing to highlight for an interaction (a customer, a table, a ticket, a kitchen station) and where its edges are. */
+  /** The thing to highlight for an interaction (a customer, a table, a ticket, a station, the till) and where its edges are. */
   private interactionTarget(interaction: Interaction) {
     if (interaction.kind === "readTicket") {
       const slip = this.tickets.get(interaction.ticketId);
@@ -302,11 +322,16 @@ export class KitchenScene extends Phaser.Scene {
     ) {
       return { kind: "pass", id: "", x: PASS.x, top: PASS.y - PASS.height / 2, bottom: PASS.y + PASS.height / 2 };
     }
+    if (interaction.kind === "action" && interaction.action === "checkout") {
+      const half = REGISTER.height / 2;
+      return { kind: "register", id: "", x: REGISTER.x, top: REGISTER.y - half, bottom: REGISTER.y + half };
+    }
     if (interaction.kind === "seat" || interaction.kind === "action") {
-      const table = this.room.state.tables.get(interaction.tableId);
+      const tableId = interaction.kind === "seat" ? interaction.tableId : interaction.targetId;
+      const table = this.room.state.tables.get(tableId);
       if (!table) return null;
       const half = TABLE_SIZE / 2;
-      return { kind: "table", id: interaction.tableId, x: table.x, top: table.y - half, bottom: table.y + half };
+      return { kind: "table", id: tableId, x: table.x, top: table.y - half, bottom: table.y + half };
     }
     const customerId = "customerId" in interaction ? interaction.customerId : undefined;
     const sprite = customerId && this.customers.get(customerId);
@@ -320,11 +345,16 @@ export class KitchenScene extends Phaser.Scene {
   private drawActionProgress() {
     for (const [sessionId, startedAt] of this.actionStartedAt) {
       const player = this.room.state.players.get(sessionId);
-      const table = player && this.room.state.tables.get(player.actionTarget);
-      if (!player?.action || !table) continue;
-
+      if (!player?.action) continue;
       const progress = Math.min(1, (this.time.now - startedAt) / ACTIONS[player.action].durationMs);
-      this.drawBar(table.x, table.y - TABLE_SIZE / 2 - 10, TABLE_SIZE + 10, progress, 0x7bd389);
+
+      if (player.action === "checkout") {
+        // The till sits against the top wall: draw the bar across it.
+        this.drawBar(REGISTER.x, REGISTER.y + REGISTER.height / 2 - 6, REGISTER.width - 8, progress, 0x7bd389);
+        continue;
+      }
+      const table = this.room.state.tables.get(player.actionTarget);
+      if (table) this.drawBar(table.x, table.y - TABLE_SIZE / 2 - 10, TABLE_SIZE + 10, progress, 0x7bd389);
     }
 
     const { status, dish } = this.room.state.stove;
@@ -434,7 +464,7 @@ export class KitchenScene extends Phaser.Scene {
       ordering: "📝",
       waitingFood: MENU[customer.wants]?.emoji,
       eating: "😋",
-      readyToLeave: "👋",
+      queuing: "💶",
     };
     this.customers.get(id)?.icon.setText(icons[customer.status] ?? "");
   }
@@ -502,6 +532,12 @@ export class KitchenScene extends Phaser.Scene {
       g.fillStyle(0x6e4b33);
       g.fillRect(x - TICKET_SLOT_SIZE / 2, y - TICKET_SLOT_SIZE / 2, TICKET_SLOT_SIZE, TICKET_SLOT_SIZE);
     }
+
+    // Exit by the till, and faint marks where the queue forms.
+    g.fillStyle(0x3f6b4f);
+    g.fillRect(WORLD.width - 6, REGISTER.y - REGISTER.height / 2 - 6, 6, REGISTER.height + 12);
+    g.lineStyle(1, 0x8a6a4a, 0.35);
+    for (const { x, y } of QUEUE_SPOTS) g.strokeCircle(x, y, CUSTOMER_SIZE / 2 + 2);
 
     // Doormat where customers come in.
     g.fillStyle(0x9c3d54, 0.55);

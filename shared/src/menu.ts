@@ -1,7 +1,7 @@
 // What customers can order, and the ingredients the kitchen makes it from.
 
 export const MENU = {
-  chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda" },
+  chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda", price: 3 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];

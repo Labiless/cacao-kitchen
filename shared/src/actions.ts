@@ -1,9 +1,10 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
-// either an instant interaction (hooking, seating or showing out a customer, opening the order dialog,
-// reading a ticket, using the fridge, stove or pass, serving) or a timed action, which completes after `durationMs` unless the player walks out of
-// reach first. A "blocked" interaction only explains why E does nothing right now.
+// either an instant interaction (hooking or seating a customer, opening the order dialog, reading a ticket,
+// using the fridge, stove or pass, serving) or a timed action (cleaning a table, taking payment), which
+// completes after `durationMs` unless the player walks out of reach first.
+// A "blocked" interaction only explains why E does nothing right now.
 
-import { isNearCustomer, isNearEntrance, isNearTable, type TableStatus } from "./hall.ts";
+import { isAtQueueSpot, isNearCustomer, isNearRegister, isNearTable, type TableStatus } from "./hall.ts";
 import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, isNearStove, nearestTicket } from "./kitchen.ts";
 import { MENU, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
 import type { CustomerStatus } from "./hall.ts";
@@ -11,6 +12,7 @@ import type { Customer, KitchenState } from "./state.ts";
 
 export const ACTIONS = {
   cleanTable: { label: "Pulisci tavolo", durationMs: 2500 },
+  checkout: { label: "Incassa", durationMs: 2000 },
 } as const;
 export type ActionId = keyof typeof ACTIONS;
 
@@ -23,8 +25,6 @@ export type Interaction =
   | { kind: "lead"; customerId: string }
   | { kind: "seat"; customerId: string; tableId: string }
   | { kind: "takeOrder"; customerId: string }
-  | { kind: "escort"; customerId: string }
-  | { kind: "farewell"; customerId: string }
   /** Client-only: opens the ticket popup. The server isn't involved until the ticket is thrown away. */
   | { kind: "readTicket"; ticketId: string }
   /** Client-only: opens the fridge popup. The server is involved once an ingredient is picked. */
@@ -38,15 +38,14 @@ export type Interaction =
   | { kind: "serve"; customerId: string; dish: MenuItemId }
   /** E does nothing right now; `reason` says why. It's about either a customer or a kitchen station. */
   | { kind: "blocked"; reason: string; customerId?: string; station?: "stove" | "pass" }
-  | { kind: "action"; action: ActionId; tableId: string };
+  /** `targetId` is the table to clean or the customer paying. */
+  | { kind: "action"; action: ActionId; targetId: string };
 
 export function interactionLabel(interaction: Interaction) {
   switch (interaction.kind) {
     case "lead": return "Accompagna al tavolo";
     case "seat": return "Fai sedere";
     case "takeOrder": return "Prendi l'ordinazione";
-    case "escort": return "Accompagna all'uscita";
-    case "farewell": return "Saluta il cliente";
     case "readTicket": return "Leggi la comanda";
     case "openFridge": return "Apri il frigo";
     case "putBack": return "Rimetti in frigo";
@@ -72,6 +71,12 @@ export function attendedCustomer(state: KitchenState, sessionId: string, status:
 export function canReachCustomer(state: KitchenState, at: { x: number; y: number }, customer: Customer) {
   const table = state.tables.get(customer.tableId);
   return table ? isNearTable(at, table) : isNearCustomer(at, customer);
+}
+
+/** The customer at the front of the queue at the till, once they've reached the till. */
+export function customerReadyToPay(state: KitchenState) {
+  const front = state.customers.get(state.queue[0] ?? "");
+  return front && isAtQueueSpot(front, 0) ? front : null;
 }
 
 /** What the cook can do at the stove, given what they're carrying. */
@@ -129,15 +134,12 @@ export function availableInteraction(
   if (attendedCustomer(state, sessionId, "ordering")) return null;
 
   const toTable = attendedCustomer(state, sessionId, "following");
-  const toExit = attendedCustomer(state, sessionId, "escortedOut");
   if (toTable) {
     for (const table of state.tables.values()) {
       if (table.status === "free" && isNearTable(at, table)) {
         return { kind: "seat", customerId: toTable.id, tableId: table.id };
       }
     }
-  } else if (toExit) {
-    if (isNearEntrance(at)) return { kind: "farewell", customerId: toExit.id };
   } else {
     for (const customer of state.customers.values()) {
       if (!canReachCustomer(state, at, customer)) continue;
@@ -147,7 +149,6 @@ export function availableInteraction(
           ? { kind: "blocked", customerId: customer.id, reason: "Comande piene in cucina" }
           : { kind: "takeOrder", customerId: customer.id };
       }
-      if (customer.status === "readyToLeave") return { kind: "escort", customerId: customer.id };
       if (customer.status === "waitingFood" && isMenuItem(player.holding)) {
         return { kind: "serve", customerId: customer.id, dish: player.holding };
       }
@@ -156,11 +157,13 @@ export function availableInteraction(
       const interaction = passInteraction(state, player.holding);
       if (interaction) return interaction;
     }
+    const payer = customerReadyToPay(state);
+    if (payer && isNearRegister(at)) return { kind: "action", action: "checkout", targetId: payer.id };
   }
 
   for (const table of state.tables.values()) {
     const action = tableActionFor(table.status);
-    if (action && isNearTable(at, table)) return { kind: "action", action, tableId: table.id };
+    if (action && isNearTable(at, table)) return { kind: "action", action, targetId: table.id };
   }
   return null;
 }
