@@ -53,13 +53,9 @@ const NO_INPUT: InputState = { left: false, right: false, up: false, down: false
 /** Delay before the very first customer, so players have a moment to look around. */
 const FIRST_CUSTOMER_DELAY_MS = 3000;
 
-/** Temporary, until the kitchen exists: seconds after ordering before the food shows up on its own. */
-const FOOD_ARRIVES_AFTER_S = 5;
-
 /** Customer statuses that end on their own after a while, and what comes next. */
 const TIMED_STATUSES: Partial<Record<CustomerStatus, { seconds: number; next: CustomerStatus }>> = {
   readingMenu: { seconds: CUSTOMER_TIMING.readingMenuS, next: "readyToOrder" },
-  waitingFood: { seconds: FOOD_ARRIVES_AFTER_S, next: "eating" },
   eating: { seconds: CUSTOMER_TIMING.eatingS, next: "readyToLeave" },
 };
 
@@ -242,6 +238,26 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         this.state.stove.status = "idle";
         this.state.stove.dish = "";
         break;
+      case "placeOnPass":
+        this.state.pass.push(interaction.dish);
+        player.holding = "";
+        break;
+      case "takeFromPass":
+        this.state.pass.shift();
+        player.holding = interaction.dish;
+        break;
+      case "serve": {
+        const customer = this.state.customers.get(interaction.customerId)!;
+        player.holding = "";
+        if (interaction.dish === customer.wants) {
+          this.setCustomerStatus(customer, "eating");
+        } else {
+          // Not what they asked for: they storm out.
+          customer.patience = 0;
+          this.sendAway(customer);
+        }
+        break;
+      }
       case "readTicket":
       case "openFridge":
       case "openStove":

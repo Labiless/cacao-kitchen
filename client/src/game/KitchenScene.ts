@@ -8,6 +8,8 @@ import {
   ENTRANCE,
   FRIDGE,
   MENU,
+  PASS,
+  PASS_CAPACITY,
   RECIPES,
   STOVE,
   Message,
@@ -22,6 +24,7 @@ import {
   attendedCustomer,
   availableInteraction,
   heldItemInfo,
+  isMenuItem,
   interactionLabel,
   type Customer,
   type CustomerStatus,
@@ -83,6 +86,11 @@ export class KitchenScene extends Phaser.Scene {
   private stoveIcon!: Phaser.GameObjects.Text;
   /** Local time (scene clock) at which the current dish started cooking, to animate its progress bar. */
   private stoveStartedAt = 0;
+  private pass!: Phaser.GameObjects.Rectangle;
+  /** One icon per spot on the pass. */
+  private passDishes: Phaser.GameObjects.Text[] = [];
+  /** What the pass icons currently show, to redraw only when it changes. */
+  private shownPass = "";
   /** Local time (scene clock) at which each player's current action started, to animate its progress bar. */
   private actionStartedAt = new Map<string, number>();
   private bars!: Phaser.GameObjects.Graphics;
@@ -108,6 +116,14 @@ export class KitchenScene extends Phaser.Scene {
       burners.strokeCircle(STOVE.x + dx, STOVE.y + dy, 8);
     }
     this.stoveIcon = this.add.text(STOVE.x, STOVE.y, "", { fontSize: "26px" }).setOrigin(0.5).setDepth(Depth.Label);
+
+    // The pass cuts through the wall, so it's drawn on top of it.
+    this.pass = this.add.rectangle(PASS.x, PASS.y, PASS.width, PASS.height, 0xc89b6d).setDepth(Depth.Table);
+    const spacing = PASS.height / PASS_CAPACITY;
+    for (let i = 0; i < PASS_CAPACITY; i++) {
+      const y = PASS.y - PASS.height / 2 + spacing * (i + 0.5);
+      this.passDishes.push(this.add.text(PASS.x, y, "", { fontSize: "16px" }).setOrigin(0.5).setDepth(Depth.Label));
+    }
     this.add
       .text(FRIDGE.x, FRIDGE.y, "FRIGO", { ...TEXT_STYLE, fontSize: "11px", fontStyle: "bold" })
       .setOrigin(0.5)
@@ -200,6 +216,7 @@ export class KitchenScene extends Phaser.Scene {
       icon.setPosition(body.x + CUSTOMER_SIZE / 2 + 2, body.y - CUSTOMER_SIZE / 2);
     }
 
+    this.refreshPass();
     this.bars.clear();
     this.drawInteractionHint();
     this.drawActionProgress();
@@ -244,6 +261,8 @@ export class KitchenScene extends Phaser.Scene {
     else this.fridge.setStrokeStyle(2, 0x9bbfcc);
     if (target?.kind === "stove") this.stove.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.stove.setStrokeStyle();
+    if (target?.kind === "pass") this.pass.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.pass.setStrokeStyle(2, 0x8a5a3b);
 
     for (const [id, slip] of this.tickets) {
       if (target?.kind === "ticket" && target.id === id) slip.setStrokeStyle(3, 0xe8833a);
@@ -276,6 +295,12 @@ export class KitchenScene extends Phaser.Scene {
       || (interaction.kind === "blocked" && interaction.station === "stove")
     ) {
       return { kind: "stove", id: "", x: STOVE.x, top: STOVE.y - STOVE.height / 2, bottom: STOVE.y + STOVE.height / 2 };
+    }
+    if (
+      interaction.kind === "placeOnPass" || interaction.kind === "takeFromPass"
+      || (interaction.kind === "blocked" && interaction.station === "pass")
+    ) {
+      return { kind: "pass", id: "", x: PASS.x, top: PASS.y - PASS.height / 2, bottom: PASS.y + PASS.height / 2 };
     }
     if (interaction.kind === "seat" || interaction.kind === "action") {
       const table = this.room.state.tables.get(interaction.tableId);
@@ -359,6 +384,17 @@ export class KitchenScene extends Phaser.Scene {
     const held = this.add.text(0, 0, this.heldIcon(player), { fontSize: "20px" }).setOrigin(0.5).setDepth(Depth.Label);
 
     this.sprites.set(sessionId, { body, label, held, target: { x: player.x, y: player.y } });
+  }
+
+  private refreshPass() {
+    const dishes = [...this.room.state.pass];
+    const key = dishes.join(",");
+    if (key === this.shownPass) return;
+    this.shownPass = key;
+    this.passDishes.forEach((icon, i) => {
+      const dish = dishes[i];
+      icon.setText(isMenuItem(dish) ? MENU[dish].emoji : "");
+    });
   }
 
   private refreshStoveIcon() {

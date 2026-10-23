@@ -1,11 +1,11 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
 // either an instant interaction (hooking, seating or showing out a customer, opening the order dialog,
-// reading a ticket, using the fridge or the stove) or a timed action, which completes after `durationMs` unless the player walks out of
+// reading a ticket, using the fridge, stove or pass, serving) or a timed action, which completes after `durationMs` unless the player walks out of
 // reach first. A "blocked" interaction only explains why E does nothing right now.
 
 import { isNearCustomer, isNearEntrance, isNearTable, type TableStatus } from "./hall.ts";
-import { freeTicketSlot, isNearFridge, isNearStove, nearestTicket } from "./kitchen.ts";
-import { MENU, isIngredient, type MenuItemId } from "./menu.ts";
+import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, isNearStove, nearestTicket } from "./kitchen.ts";
+import { MENU, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState } from "./state.ts";
 
@@ -33,8 +33,11 @@ export type Interaction =
   /** Client-only: opens the stove popup. The server is involved once a dish is picked. */
   | { kind: "openStove" }
   | { kind: "takeDish"; dish: MenuItemId }
+  | { kind: "placeOnPass"; dish: MenuItemId }
+  | { kind: "takeFromPass"; dish: MenuItemId }
+  | { kind: "serve"; customerId: string; dish: MenuItemId }
   /** E does nothing right now; `reason` says why. It's about either a customer or a kitchen station. */
-  | { kind: "blocked"; reason: string; customerId?: string; station?: "stove" }
+  | { kind: "blocked"; reason: string; customerId?: string; station?: "stove" | "pass" }
   | { kind: "action"; action: ActionId; tableId: string };
 
 export function interactionLabel(interaction: Interaction) {
@@ -49,6 +52,9 @@ export function interactionLabel(interaction: Interaction) {
     case "putBack": return "Rimetti in frigo";
     case "openStove": return "Usa il fornello";
     case "takeDish": return `Prendi ${MENU[interaction.dish].label}`;
+    case "placeOnPass": return "Posa sul bancone";
+    case "takeFromPass": return `Prendi ${MENU[interaction.dish].label}`;
+    case "serve": return `Servi ${MENU[interaction.dish].label}`;
     case "blocked": return interaction.reason;
     case "action": return ACTIONS[interaction.action].label;
   }
@@ -82,6 +88,18 @@ function stoveInteraction(state: KitchenState, holding: string): Interaction {
     : { kind: "blocked", station: "stove", reason: holding ? "Hai già un piatto in mano" : "Ti serve un ingrediente" };
 }
 
+/** What either player can do at the pass: leave the dish they carry, or pick up the oldest one. */
+function passInteraction(state: KitchenState, holding: string): Interaction | null {
+  if (isMenuItem(holding)) {
+    return state.pass.length < PASS_CAPACITY
+      ? { kind: "placeOnPass", dish: holding }
+      : { kind: "blocked", station: "pass", reason: "Bancone pieno" };
+  }
+  const oldest = state.pass[0];
+  if (!holding && isMenuItem(oldest)) return { kind: "takeFromPass", dish: oldest };
+  return null;
+}
+
 /**
  * What pressing E would do for this player right now, if anything.
  * The server calls it with the authoritative position; the client passes its smoothed
@@ -104,6 +122,7 @@ export function availableInteraction(
       return isIngredient(player.holding) ? { kind: "putBack" } : null;
     }
     if (isNearStove(at)) return stoveInteraction(state, player.holding);
+    if (isNearPass(at)) return passInteraction(state, player.holding);
     return null;
   }
 
@@ -129,6 +148,13 @@ export function availableInteraction(
           : { kind: "takeOrder", customerId: customer.id };
       }
       if (customer.status === "readyToLeave") return { kind: "escort", customerId: customer.id };
+      if (customer.status === "waitingFood" && isMenuItem(player.holding)) {
+        return { kind: "serve", customerId: customer.id, dish: player.holding };
+      }
+    }
+    if (isNearPass(at)) {
+      const interaction = passInteraction(state, player.holding);
+      if (interaction) return interaction;
     }
   }
 

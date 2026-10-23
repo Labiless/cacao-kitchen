@@ -21,6 +21,11 @@ export const FRIDGE = { x: 30, y: 260, width: 52, height: 96 } as const;
 /** Across the kitchen from the fridge, against the middle wall. */
 export const STOVE = { x: WALL.x - WALL.thickness / 2 - 30, y: 260, width: 56, height: 56 } as const;
 
+/** Opening in the middle wall, reachable from both sides: the cook leaves dishes, the waiter picks them up. */
+export const PASS = { x: WALL.x, y: 470, width: 64, height: 56 } as const;
+/** How many dishes fit on the pass. */
+export const PASS_CAPACITY = 3;
+
 export const STOVE_STATUSES = ["idle", "cooking", "ready"] as const;
 export type StoveStatus = (typeof STOVE_STATUSES)[number];
 
@@ -46,9 +51,9 @@ function isNearBox(p: Point, box: Box) {
     && Math.abs(p.y - box.y) <= (PLAYER_SIZE + box.height) / 2 + INTERACT_DISTANCE;
 }
 
-/** Whether a player centered at `p` would overlap any piece of kitchen furniture. */
+/** Whether a player centered at `p` would overlap any piece of kitchen furniture (the pass included). */
 export function overlapsKitchenFurniture(p: Point) {
-  return overlapsBox(p, FRIDGE) || overlapsBox(p, STOVE) || overlapsTicketSlots(p);
+  return overlapsBox(p, FRIDGE) || overlapsBox(p, STOVE) || overlapsBox(p, PASS) || overlapsTicketSlots(p);
 }
 
 export function isNearFridge(p: Point) {
@@ -57,6 +62,10 @@ export function isNearFridge(p: Point) {
 
 export function isNearStove(p: Point) {
   return isNearBox(p, STOVE);
+}
+
+export function isNearPass(p: Point) {
+  return isNearBox(p, PASS);
 }
 
 /** Whether a player centered at `p` would overlap any ticket slot. */

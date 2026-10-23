@@ -73,5 +73,7 @@ export const KitchenState = schema({
   customers: t.map(Customer),
   tickets: t.map(Ticket),
   stove: Stove,
+  /** Dishes waiting on the pass, oldest first. */
+  pass: t.array("string"),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;
