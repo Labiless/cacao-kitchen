@@ -8,9 +8,12 @@ import {
   Player,
   ROLES,
   ROLE_INFO,
+  TABLE_LAYOUT,
+  Table,
   WORLD,
   cleanName,
   isRole,
+  overlapsTable,
   zoneFor,
   type InputState,
   type JoinOptions,
@@ -27,6 +30,15 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private heldKeys = new Map<string, InputState>();
 
   onCreate() {
+    for (const { id, x, y } of TABLE_LAYOUT) {
+      const table = new Table();
+      table.id = id;
+      table.x = x;
+      table.y = y;
+      table.status = "free";
+      this.state.tables.set(id, table);
+    }
+
     this.onMessage(Message.Input, (client, input: Partial<InputState>) => {
       // Never trust the client: coerce everything to booleans.
       this.heldKeys.set(client.sessionId, {
@@ -88,9 +100,19 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       dx /= length;
       dy /= length;
 
-      player.x = clamp(player.x + dx * PLAYER_SPEED * dt, zone.minX, zone.maxX);
-      player.y = clamp(player.y + dy * PLAYER_SPEED * dt, half, WORLD.height - half);
+      // One axis at a time, so a player blocked by a table can still slide along it.
+      const nextX = clamp(player.x + dx * PLAYER_SPEED * dt, zone.minX, zone.maxX);
+      if (!this.hitsTable(nextX, player.y)) player.x = nextX;
+      const nextY = clamp(player.y + dy * PLAYER_SPEED * dt, half, WORLD.height - half);
+      if (!this.hitsTable(player.x, nextY)) player.y = nextY;
     });
+  }
+
+  private hitsTable(x: number, y: number) {
+    for (const table of this.state.tables.values()) {
+      if (overlapsTable({ x, y }, table)) return true;
+    }
+    return false;
   }
 }
 

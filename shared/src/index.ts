@@ -1,5 +1,5 @@
 // Values that both the server and the client must agree on.
-// The synced room state (Colyseus Schema) lives in ./state.ts.
+// The synced room state (Colyseus Schema) lives in ./state.ts, the dining hall layout in ./hall.ts.
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
@@ -61,3 +61,4 @@ export function cleanName(raw: unknown) {
 }
 
 export * from "./state.ts";
+export * from "./hall.ts";

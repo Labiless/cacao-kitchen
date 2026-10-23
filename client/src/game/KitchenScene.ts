@@ -1,6 +1,18 @@
 import * as Phaser from "phaser";
 import { Callbacks } from "@colyseus/sdk";
-import { Message, PLAYER_SIZE, ROLE_INFO, WALL, WORLD, type InputState, type Player } from "@cacao/shared";
+import {
+  Message,
+  PLAYER_SIZE,
+  ROLE_INFO,
+  TABLE_SIZE,
+  TABLE_STATUS_INFO,
+  WALL,
+  WORLD,
+  isNearTable,
+  type InputState,
+  type Player,
+  type Table,
+} from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 
 interface PlayerSprite {
@@ -10,11 +22,20 @@ interface PlayerSprite {
   target: { x: number; y: number };
 }
 
+interface TableSprite {
+  body: Phaser.GameObjects.Rectangle;
+  label: Phaser.GameObjects.Text;
+}
+
+/** Draw order: floor < tables < players < labels. */
+const Depth = { Table: 1, Player: 2, Label: 3 } as const;
+
 /** Fraction of the remaining distance covered per frame at 60 fps. */
 const SMOOTHING = 0.3;
 
 export class KitchenScene extends Phaser.Scene {
   private sprites = new Map<string, PlayerSprite>();
+  private tables = new Map<string, TableSprite>();
   private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
   private lastInput: InputState = { left: false, right: false, up: false, down: false };
 
@@ -44,6 +65,10 @@ export class KitchenScene extends Phaser.Scene {
         }));
       }),
       callbacks.onRemove("players", (_player, sessionId) => this.removePlayer(sessionId)),
+      callbacks.onAdd("tables", (table, id) => {
+        this.addTable(id, table);
+        unsubscribe.push(callbacks.listen(table, "status", () => this.refreshTable(id, table)));
+      }),
     );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => unsubscribe.forEach((off) => off()));
   }
@@ -56,6 +81,20 @@ export class KitchenScene extends Phaser.Scene {
       body.x = Phaser.Math.Linear(body.x, target.x, t);
       body.y = Phaser.Math.Linear(body.y, target.y, t);
       label.setPosition(body.x, body.y - PLAYER_SIZE / 2 - 6);
+    }
+
+    this.highlightNearbyTables();
+  }
+
+  /** Outlines the tables the local waiter could interact with right now. */
+  private highlightNearbyTables() {
+    const me = this.room.state.players.get(this.room.sessionId);
+    const mySprite = this.sprites.get(this.room.sessionId);
+    for (const [id, { body }] of this.tables) {
+      const table = this.room.state.tables.get(id);
+      const near = me?.role === "hall" && mySprite && table && isNearTable(mySprite.body, table);
+      if (near) body.setStrokeStyle(4, 0xfff3c4);
+      else body.setStrokeStyle();
     }
   }
 
@@ -79,7 +118,7 @@ export class KitchenScene extends Phaser.Scene {
     const color = Phaser.Display.Color.HexStringToColor(player.color).color;
     const isMe = sessionId === this.room.sessionId;
 
-    const body = this.add.rectangle(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE, color);
+    const body = this.add.rectangle(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE, color).setDepth(Depth.Player);
     if (isMe) body.setStrokeStyle(3, 0x3b2a1e);
 
     const label = this.add
@@ -88,9 +127,32 @@ export class KitchenScene extends Phaser.Scene {
         fontSize: "14px",
         color: "#3b2a1e",
       })
-      .setOrigin(0.5, 1);
+      .setOrigin(0.5, 1)
+      .setDepth(Depth.Label);
 
     this.sprites.set(sessionId, { body, label, target: { x: player.x, y: player.y } });
+  }
+
+  private addTable(id: string, table: Table) {
+    const body = this.add.rectangle(table.x, table.y, TABLE_SIZE, TABLE_SIZE).setDepth(Depth.Table);
+    const label = this.add
+      .text(table.x, table.y + TABLE_SIZE / 2 + 4, "", {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: "12px",
+        color: "#3b2a1e",
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(Depth.Label);
+    this.tables.set(id, { body, label });
+    this.refreshTable(id, table);
+  }
+
+  private refreshTable(id: string, table: Table) {
+    const sprite = this.tables.get(id);
+    if (!sprite) return;
+    const info = TABLE_STATUS_INFO[table.status];
+    sprite.body.setFillStyle(Phaser.Display.Color.HexStringToColor(info.color).color);
+    sprite.label.setText(info.label);
   }
 
   private labelFor(sessionId: string, player: Player) {
