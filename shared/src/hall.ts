@@ -27,6 +27,11 @@ export function tableLabel(tableId: string) {
 /** Doormat where customers come in and wait to be led to a table. */
 export const ENTRANCE = { x: WORLD.width - 40, y: WORLD.height - 50, size: 70 } as const;
 
+/** Where the i-th customer waiting at the entrance stands: on the mat, then in a line up from it. */
+export function entranceSpot(index: number) {
+  return { x: ENTRANCE.x, y: ENTRANCE.y - index * 40 };
+}
+
 /** Till by the exit, across the hall from the entrance: customers queue here to pay before leaving. */
 export const REGISTER = { x: WORLD.width - 50, y: 30, width: 80, height: 40 } as const;
 

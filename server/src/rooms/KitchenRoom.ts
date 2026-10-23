@@ -5,7 +5,6 @@ import {
   CUSTOMER_SPEED,
   CUSTOMER_TIMING,
   Customer,
-  ENTRANCE,
   FOLLOW_GAP,
   KitchenState,
   MAX_CUSTOMERS,
@@ -27,6 +26,7 @@ import {
   attendedCustomer,
   availableInteraction,
   canReachCustomer,
+  entranceSpot,
   cleanName,
   customerReadyToPay,
   isIngredient,
@@ -205,6 +205,13 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         this.setCustomerStatus(customer, "following");
         break;
       }
+      case "release": {
+        const customer = this.state.customers.get(interaction.customerId)!;
+        customer.waiterId = "";
+        // Back to waiting, keeping the patience they had left.
+        customer.status = "waiting";
+        break;
+      }
       case "takeOrder": {
         const customer = this.state.customers.get(interaction.customerId)!;
         customer.waiterId = sessionId;
@@ -359,6 +366,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.nextCustomerAt = now + CUSTOMER_TIMING.spawnIntervalS * 1000;
     }
 
+    // Customers waiting at the entrance line up in order of arrival (customer ids are sequential).
+    const entranceLine = [...this.state.customers.values()]
+      .filter((c) => c.status === "waiting")
+      .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+
     this.state.customers.forEach((customer) => {
       const patienceS = CUSTOMER_TIMING.patienceS[customer.status];
       if (patienceS) {
@@ -382,13 +394,17 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
           if (leader) {
             this.follow(customer, leader, dt);
           } else {
-            // Their waiter left the room: they stop where they are and wait for someone else,
+            // Their waiter left the room: back to the entrance to wait for someone else,
             // keeping the patience they had left.
             customer.waiterId = "";
             customer.status = "waiting";
           }
           break;
         }
+
+        case "waiting":
+          this.walkTowards(customer, entranceSpot(Math.max(0, entranceLine.indexOf(customer))), dt);
+          break;
 
         case "queuing": {
           const spot = QUEUE_SPOTS[Math.max(0, this.state.queue.indexOf(customer.id))];
@@ -425,8 +441,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private spawnCustomer() {
     const customer = new Customer();
     customer.id = `c${++this.customerCount}`;
-    customer.x = ENTRANCE.x;
-    customer.y = ENTRANCE.y;
+    const spot = entranceSpot(0);
+    customer.x = spot.x;
+    customer.y = spot.y;
     customer.wants = MENU_ITEMS[Math.floor(Math.random() * MENU_ITEMS.length)];
     this.setCustomerStatus(customer, "waiting");
     this.state.customers.set(customer.id, customer);

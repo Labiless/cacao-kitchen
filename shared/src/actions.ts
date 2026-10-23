@@ -24,6 +24,8 @@ export function tableActionFor(status: TableStatus): ActionId | null {
 export type Interaction =
   | { kind: "lead"; customerId: string }
   | { kind: "seat"; customerId: string; tableId: string }
+  /** Let go of the customer being led: they walk back to the entrance and wait again. */
+  | { kind: "release"; customerId: string }
   | { kind: "takeOrder"; customerId: string }
   /** Client-only: opens the ticket popup. The server isn't involved until the ticket is thrown away. */
   | { kind: "readTicket"; ticketId: string }
@@ -45,6 +47,7 @@ export function interactionLabel(interaction: Interaction) {
   switch (interaction.kind) {
     case "lead": return "Accompagna al tavolo";
     case "seat": return "Fai sedere";
+    case "release": return "Rimanda all'ingresso";
     case "takeOrder": return "Prendi l'ordinazione";
     case "readTicket": return "Leggi la comanda";
     case "openFridge": return "Apri il frigo";
@@ -140,6 +143,8 @@ export function availableInteraction(
         return { kind: "seat", customerId: toTable.id, tableId: table.id };
       }
     }
+    // Cleaning a table with the customer in tow is fine; otherwise E lets them go.
+    return tableAction(state, at) ?? { kind: "release", customerId: toTable.id };
   } else {
     for (const customer of state.customers.values()) {
       if (!canReachCustomer(state, at, customer)) continue;
@@ -161,6 +166,11 @@ export function availableInteraction(
     if (payer && isNearRegister(at)) return { kind: "action", action: "checkout", targetId: payer.id };
   }
 
+  return tableAction(state, at);
+}
+
+/** A timed action on a table within reach (cleaning it), if any. */
+function tableAction(state: KitchenState, at: { x: number; y: number }): Interaction | null {
   for (const table of state.tables.values()) {
     const action = tableActionFor(table.status);
     if (action && isNearTable(at, table)) return { kind: "action", action, targetId: table.id };
