@@ -5,6 +5,7 @@
 
 import { PLAYER_SIZE, WALL, WORLD } from "./world.ts";
 import type { IngredientId, MenuItemId } from "./menu.ts";
+import type { EquipmentId } from "./kitchen.ts";
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
@@ -47,6 +48,8 @@ export const Message = {
   TakeIngredient: "takeIngredient",
   /** Payload: CookMessage. Sent from the stove popup. */
   Cook: "cook",
+  /** Payload: BuyEquipmentMessage. Sent when the waiter places what they bought on the computer. */
+  BuyEquipment: "buyEquipment",
   /** Payload: BuyIngredientMessage. Sent from the phone popup. */
   BuyIngredient: "buyIngredient",
 } as const;
@@ -56,7 +59,15 @@ export interface BuyIngredientMessage {
 }
 
 export interface CookMessage {
+  stoveId: string;
   dish: MenuItemId;
+}
+
+export interface BuyEquipmentMessage {
+  item: EquipmentId;
+  /** Grid square in the kitchen where it goes (see KITCHEN_GRID). */
+  col: number;
+  row: number;
 }
 
 export interface TakeIngredientMessage {

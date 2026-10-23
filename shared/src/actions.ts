@@ -1,14 +1,22 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
 // either an instant interaction (hooking or seating a customer, opening the order dialog, reading a ticket,
-// using the fridge, stove, pass or phone, serving) or a timed action (cleaning a table, taking payment), which
+// using the fridge, a stove, the pass, phone or computer, serving) or a timed action (cleaning a table, taking payment), which
 // completes after `durationMs` unless the player walks out of reach first.
 // A "blocked" interaction only explains why E does nothing right now.
 
-import { isAtQueueSpot, isNearCustomer, isNearPhone, isNearRegister, isNearTable, type TableStatus } from "./hall.ts";
-import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, isNearStove, nearestTicket } from "./kitchen.ts";
+import {
+  isAtQueueSpot,
+  isNearComputer,
+  isNearCustomer,
+  isNearPhone,
+  isNearRegister,
+  isNearTable,
+  type TableStatus,
+} from "./hall.ts";
+import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, nearestStove, nearestTicket } from "./kitchen.ts";
 import { MENU, MENU_ITEMS, formatMoney, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
 import type { CustomerStatus } from "./hall.ts";
-import type { Customer, KitchenState } from "./state.ts";
+import type { Customer, KitchenState, Stove } from "./state.ts";
 
 export const ACTIONS = {
   cleanTable: { label: "Pulisci tavolo", durationMs: 2500 },
@@ -35,13 +43,15 @@ export type Interaction =
   /** Client-only: opens the phone popup. The server is involved once something is bought. */
   | { kind: "openPhone" }
   /** Client-only: opens the stove popup. The server is involved once a dish is picked. */
-  | { kind: "openStove" }
-  | { kind: "takeDish"; dish: MenuItemId }
+  | { kind: "openStove"; stoveId: string }
+  | { kind: "takeDish"; stoveId: string; dish: MenuItemId }
+  /** Client-only: opens the computer popup. The server is involved once something is bought and placed. */
+  | { kind: "openComputer" }
   | { kind: "placeOnPass"; dish: MenuItemId }
   | { kind: "takeFromPass"; dish: MenuItemId }
   | { kind: "serve"; customerId: string; dish: MenuItemId }
   /** E does nothing right now; `reason` says why. It's about either a customer or a kitchen station. */
-  | { kind: "blocked"; reason: string; customerId?: string; station?: "stove" | "pass" }
+  | { kind: "blocked"; reason: string; customerId?: string; station?: "stove" | "pass"; stationId?: string }
   /** `targetId` is the table to clean or the customer paying; `amountCents` is what they're paying. */
   | { kind: "action"; action: ActionId; targetId: string; amountCents?: number };
 
@@ -56,6 +66,7 @@ export function interactionLabel(interaction: Interaction) {
     case "putBack": return "Rimetti in frigo";
     case "openStove": return "Usa il fornello";
     case "openPhone": return "Usa il telefono";
+    case "openComputer": return "Usa il computer";
     case "takeDish": return `Prendi ${MENU[interaction.dish].label}`;
     case "placeOnPass": return "Posa sul bancone";
     case "takeFromPass": return `Prendi ${MENU[interaction.dish].label}`;
@@ -100,18 +111,14 @@ export function customerReadyToPay(state: KitchenState) {
   return front && isAtQueueSpot(front, 0) ? front : null;
 }
 
-/** What the cook can do at the stove, given what they're carrying. */
-function stoveInteraction(state: KitchenState, holding: string): Interaction {
-  const { status, dish } = state.stove;
-  if (status === "cooking") return { kind: "blocked", station: "stove", reason: "In cottura…" };
-  if (status === "ready" && dish) {
-    return holding
-      ? { kind: "blocked", station: "stove", reason: "Hai le mani piene" }
-      : { kind: "takeDish", dish };
-  }
-  return isIngredient(holding)
-    ? { kind: "openStove" }
-    : { kind: "blocked", station: "stove", reason: holding ? "Hai già un piatto in mano" : "Ti serve un ingrediente" };
+/** What the cook can do at a stove, given what they're carrying. */
+function stoveInteraction(stove: Stove, holding: string): Interaction {
+  const { id: stoveId, status, dish } = stove;
+  const blocked = (reason: string): Interaction => ({ kind: "blocked", station: "stove", stationId: stoveId, reason });
+  if (status === "cooking") return blocked("In cottura…");
+  if (status === "ready" && dish) return holding ? blocked("Hai le mani piene") : { kind: "takeDish", stoveId, dish };
+  if (isIngredient(holding)) return { kind: "openStove", stoveId };
+  return blocked(holding ? "Hai già un piatto in mano" : "Ti serve un ingrediente");
 }
 
 /** What either player can do at the pass: leave the dish they carry, or pick up the oldest one. */
@@ -147,7 +154,8 @@ export function availableInteraction(
       if (!player.holding) return { kind: "openFridge" };
       return isIngredient(player.holding) ? { kind: "putBack" } : null;
     }
-    if (isNearStove(at)) return stoveInteraction(state, player.holding);
+    const stove = nearestStove(state, at);
+    if (stove) return stoveInteraction(stove, player.holding);
     if (isNearPass(at)) return passInteraction(state, player.holding);
     return null;
   }
@@ -183,6 +191,7 @@ export function availableInteraction(
       if (interaction) return interaction;
     }
     if (isNearPhone(at)) return { kind: "openPhone" };
+    if (isNearComputer(at)) return { kind: "openComputer" };
     const payer = customerReadyToPay(state);
     if (payer && isNearRegister(at)) {
       return { kind: "action", action: "checkout", targetId: payer.id, amountCents: payer.bill };

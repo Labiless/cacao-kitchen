@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { attendedCustomer, formatMoney, type MenuItemId } from "@cacao/shared";
+import { attendedCustomer, formatMoney, type EquipmentId, type MenuItemId } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
-import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, createGame, type ScenePopup } from "../game/createGame.ts";
+import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, START_PLACEMENT_EVENT, createGame, type ScenePopup } from "../game/createGame.ts";
 import { FridgeDialog } from "./FridgeDialog.tsx";
 import { StoveDialog } from "./StoveDialog.tsx";
 import { PhoneDialog } from "./PhoneDialog.tsx";
+import { ComputerDialog } from "./ComputerDialog.tsx";
 import { useRoomState } from "./useRoomState.ts";
 import { NameDialog } from "./NameDialog.tsx";
 import { OrderDialog } from "./OrderDialog.tsx";
@@ -24,7 +25,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
   const money = useRoomState(room, (state) => state.money);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
-  /** Popup opened from the scene (a ticket, the fridge, the stove, the phone), if any. */
+  /** Popup opened from the scene (a ticket, the fridge, a stove, the phone, the computer), if any. */
   const [popup, setPopup] = useState<ScenePopup | null>(null);
 
   // Phaser owns the canvas; React only mounts/unmounts it.
@@ -44,6 +45,12 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   }, [popup]);
 
   const closePopup = useCallback(() => setPopup(null), []);
+
+  // Buying on the computer hands over to the scene, where the item is placed on the kitchen grid.
+  const startPlacement = useCallback((item: EquipmentId) => {
+    setPopup(null);
+    gameRef.current?.events.emit(START_PLACEMENT_EVENT, item);
+  }, []);
 
   useEffect(() => {
     room.onLeave(onLeave);
@@ -90,8 +97,9 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
       {popup?.kind === "ticket" && <TicketDialog room={room} ticketId={popup.ticketId} onClose={closePopup} />}
       {popup?.kind === "fridge" && <FridgeDialog room={room} onClose={closePopup} />}
-      {popup?.kind === "stove" && <StoveDialog room={room} onClose={closePopup} />}
+      {popup?.kind === "stove" && <StoveDialog room={room} stoveId={popup.stoveId} onClose={closePopup} />}
       {popup?.kind === "phone" && <PhoneDialog room={room} onClose={closePopup} />}
+      {popup?.kind === "computer" && <ComputerDialog room={room} onBuy={startPlacement} onClose={closePopup} />}
       {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
     </div>

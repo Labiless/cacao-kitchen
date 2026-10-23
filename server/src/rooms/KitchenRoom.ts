@@ -39,6 +39,13 @@ import {
   isNearFridge,
   isNearPhone,
   isNearStove,
+  isNearComputer,
+  isEquipment,
+  canPlaceEquipment,
+  cellCenter,
+  EQUIPMENT,
+  STARTING_STOVES,
+  Stove,
   freeTicketSlot,
   isNearTicketSlot,
   isNearRegister,
@@ -53,6 +60,7 @@ import {
   type InputState,
   type CookMessage,
   type CustomerStatus,
+  type BuyEquipmentMessage,
   type BuyIngredientMessage,
   type DiscardTicketMessage,
   type TakeIngredientMessage,
@@ -84,8 +92,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   /** When each customer in a TIMED_STATUSES status moves on to the next one. */
   private statusEndsAt = new Map<string, number>();
   private nextCustomerAt = 0;
-  /** When the dish on the stove is done. */
-  private stoveReadyAt = 0;
+  /** When the dish on each stove is done, by stove id. */
+  private stoveReadyAt = new Map<string, number>();
+  private stoveCount = 0;
   private customerCount = 0;
   private ticketCount = 0;
 
@@ -94,6 +103,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.state.money = STARTING_MONEY_CENTS;
     for (const ingredient of INGREDIENT_IDS) this.state.fridge.set(ingredient, 0);
     this.state.unlockedRecipes.push(...STARTING_RECIPES);
+    for (const { col, row } of STARTING_STOVES) this.addStove(col, row);
 
     for (const { id, x, y } of TABLE_LAYOUT) {
       const table = new Table();
@@ -174,16 +184,31 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     this.onMessage(Message.Cook, (client, message: CookMessage) => {
       const player = this.state.players.get(client.sessionId);
+      const stove = this.state.stoves.get(String(message?.stoveId));
       const recipe = isMenuItem(message?.dish) && unlockedMenu(this.state).includes(message.dish)
         ? RECIPES[message.dish]
         : null;
-      if (player?.role !== "kitchen" || !recipe || !isNearStove(player)) return;
-      if (this.state.stove.status !== "idle" || player.holding !== recipe.ingredient) return;
+      if (player?.role !== "kitchen" || !recipe || !stove || !isNearStove(player, stove)) return;
+      if (stove.status !== "idle" || player.holding !== recipe.ingredient) return;
 
       player.holding = "";
-      this.state.stove.status = "cooking";
-      this.state.stove.dish = message.dish;
-      this.stoveReadyAt = this.clock.currentTime + recipe.cookMs;
+      stove.status = "cooking";
+      stove.dish = message.dish;
+      this.stoveReadyAt.set(stove.id, this.clock.currentTime + recipe.cookMs);
+    });
+
+    this.onMessage(Message.BuyEquipment, (client, message: BuyEquipmentMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (player?.role !== "hall" || !isNearComputer(player) || !isEquipment(message?.item)) return;
+      const { priceCents } = EQUIPMENT[message.item];
+      if (this.state.money < priceCents || !canPlaceEquipment(this.state, message.col, message.row)) return;
+
+      this.state.money -= priceCents;
+      switch (message.item) {
+        case "stove":
+          this.addStove(message.col, message.row);
+          break;
+      }
     });
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
@@ -217,6 +242,15 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.state.players.delete(client.sessionId);
     this.heldKeys.delete(client.sessionId);
     this.actionEndsAt.delete(client.sessionId);
+  }
+
+  private addStove(col: number, row: number) {
+    const stove = new Stove();
+    stove.id = `s${++this.stoveCount}`;
+    const { x, y } = cellCenter(col, row);
+    stove.x = x;
+    stove.y = y;
+    this.state.stoves.set(stove.id, stove);
   }
 
   /** E was pressed: do whatever the shared rules say is possible from where the player stands. */
@@ -263,11 +297,13 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         }
         player.holding = "";
         break;
-      case "takeDish":
+      case "takeDish": {
+        const stove = this.state.stoves.get(interaction.stoveId)!;
         player.holding = interaction.dish;
-        this.state.stove.status = "idle";
-        this.state.stove.dish = "";
+        stove.status = "idle";
+        stove.dish = "";
         break;
+      }
       case "placeOnPass":
         this.state.pass.push(interaction.dish);
         player.holding = "";
@@ -293,6 +329,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       case "openFridge":
       case "openStove":
       case "openPhone":
+      case "openComputer":
       case "blocked":
         // Nothing to do on the server: these only open a popup (or explain why E does nothing).
         break;
@@ -355,8 +392,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     });
     this.updateCustomers(dt);
 
-    if (this.state.stove.status === "cooking" && this.clock.currentTime >= this.stoveReadyAt) {
-      this.state.stove.status = "ready";
+    for (const stove of this.state.stoves.values()) {
+      if (stove.status === "cooking" && this.clock.currentTime >= (this.stoveReadyAt.get(stove.id) ?? 0)) {
+        stove.status = "ready";
+      }
     }
   }
 
@@ -380,7 +419,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   private hitsObstacle(x: number, y: number) {
-    if (overlapsKitchenFurniture({ x, y }) || overlapsHallFurniture({ x, y })) return true;
+    if (overlapsKitchenFurniture({ x, y }, this.state.stoves.values()) || overlapsHallFurniture({ x, y })) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }

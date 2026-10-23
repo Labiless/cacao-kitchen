@@ -63,6 +63,10 @@ export const Ticket = schema({
 export type Ticket = SchemaType<typeof Ticket>;
 
 export const Stove = schema({
+  id: t.string(),
+  /** Center of the grid square it stands on. */
+  x: t.number(),
+  y: t.number(),
   status: t.string<StoveStatus>().default("idle"),
   /** What's cooking or ready to be picked up; "" when idle. */
   dish: t.string<MenuItemId | "">().default(""),
@@ -74,7 +78,7 @@ export const KitchenState = schema({
   tables: t.map(Table),
   customers: t.map(Customer),
   tickets: t.map(Ticket),
-  stove: Stove,
+  stoves: t.map(Stove),
   /** Dishes waiting on the pass, oldest first. */
   pass: t.array("string"),
   /** Ids of the customers queuing at the till, front of the queue first. */

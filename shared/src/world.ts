@@ -23,6 +23,11 @@ export interface Box extends Point {
   height: number;
 }
 
+/** Whether two boxes overlap (touching edges don't count). */
+export function boxesOverlap(a: Box, b: Box) {
+  return Math.abs(a.x - b.x) < (a.width + b.width) / 2 && Math.abs(a.y - b.y) < (a.height + b.height) / 2;
+}
+
 /** Whether a player centered at `p` would overlap the box. */
 export function overlapsBox(p: Point, box: Box) {
   return Math.abs(p.x - box.x) < (PLAYER_SIZE + box.width) / 2

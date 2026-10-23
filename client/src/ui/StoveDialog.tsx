@@ -12,18 +12,19 @@ import type { KitchenRoom } from "../network.ts";
 
 interface Props {
   room: KitchenRoom;
+  stoveId: string;
   onClose: () => void;
 }
 
 /** The cook picks what to make with the ingredient in their hands. */
-export function StoveDialog({ room, onClose }: Props) {
+export function StoveDialog({ room, stoveId, onClose }: Props) {
   const holding = room.state.players.get(room.sessionId)?.holding;
   const [selected, setSelected] = useState<MenuItemId | null>(null);
   const canCook = (dish: MenuItemId) => RECIPES[dish].ingredient === holding;
 
   function cook() {
     if (!selected || !canCook(selected)) return;
-    room.send(Message.Cook, { dish: selected } satisfies CookMessage);
+    room.send(Message.Cook, { stoveId, dish: selected } satisfies CookMessage);
     onClose();
   }
 
