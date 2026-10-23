@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ROOM_NAME, type JoinOptions, type KitchenState } from "@cacao/shared";
+import { ROOM_NAME, type JoinOptions, type KitchenState, type Role } from "@cacao/shared";
 import { client, waitForState, type KitchenRoom } from "./network.ts";
 import { getRoomIdFromUrl, setRoomIdInUrl } from "./invite.ts";
 import { loadPlayerName, savePlayerName } from "./playerName.ts";
 import { Lobby } from "./ui/Lobby.tsx";
 import { GameView } from "./ui/GameView.tsx";
 
-export type JoinRequest = { kind: "create" } | { kind: "join"; roomId: string };
+export type JoinRequest = { kind: "create"; role: Role } | { kind: "join"; roomId: string };
 
 export function App() {
   const [room, setRoom] = useState<KitchenRoom | null>(null);
@@ -19,10 +19,9 @@ export function App() {
     setBusy(true);
     setError(null);
     try {
-      const options: JoinOptions = { name };
       const joined = request.kind === "create"
-        ? await client.create<KitchenState>(ROOM_NAME, options)
-        : await client.joinById<KitchenState>(request.roomId, options);
+        ? await client.create<KitchenState>(ROOM_NAME, { name, role: request.role } satisfies JoinOptions)
+        : await client.joinById<KitchenState>(request.roomId, { name } satisfies JoinOptions);
       setRoom(await waitForState(joined));
       setRoomIdInUrl(joined.roomId);
       if (name) savePlayerName(name);

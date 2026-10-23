@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { Callbacks } from "@colyseus/sdk";
-import { Message, PLAYER_SIZE, WORLD, type InputState, type Player } from "@cacao/shared";
+import { Message, PLAYER_SIZE, ROLE_INFO, WALL, WORLD, type InputState, type Player } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 
 interface PlayerSprite {
@@ -23,7 +23,7 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   create() {
-    this.drawFloor();
+    this.drawMap();
 
     // No key capture: otherwise Phaser swallows these keys and they can't be typed into React inputs.
     this.keys = this.input.keyboard!.addKeys({
@@ -104,15 +104,29 @@ export class KitchenScene extends Phaser.Scene {
     this.sprites.delete(sessionId);
   }
 
-  /** Simple tiled floor so movement is visible. */
-  private drawFloor() {
-    const tile = 50;
+  /** Kitchen tiles on the left, dining hall floorboards on the right, wall in between. */
+  private drawMap() {
     const g = this.add.graphics();
-    for (let x = 0; x < WORLD.width; x += tile) {
+    const tile = 50;
+
+    for (let x = 0; x < WALL.x; x += tile) {
       for (let y = 0; y < WORLD.height; y += tile) {
-        g.fillStyle((x / tile + y / tile) % 2 === 0 ? 0xf6efe4 : 0xede3d3);
+        g.fillStyle((x / tile + y / tile) % 2 === 0 ? 0xf6efe4 : 0xe4d8c6);
         g.fillRect(x, y, tile, tile);
       }
     }
+
+    const plank = 30;
+    for (let y = 0; y < WORLD.height; y += plank) {
+      g.fillStyle((y / plank) % 2 === 0 ? 0xd9b48f : 0xd2ab85);
+      g.fillRect(WALL.x, y, WORLD.width - WALL.x, plank);
+    }
+
+    g.fillStyle(0x5a4232);
+    g.fillRect(WALL.x - WALL.thickness / 2, 0, WALL.thickness, WORLD.height);
+
+    const labelStyle = { fontFamily: "system-ui, sans-serif", fontSize: "18px", fontStyle: "bold", color: "#3b2a1e" };
+    this.add.text(WALL.x / 2, 16, ROLE_INFO.kitchen.area.toUpperCase(), labelStyle).setOrigin(0.5, 0).setAlpha(0.35);
+    this.add.text((WALL.x + WORLD.width) / 2, 16, ROLE_INFO.hall.area.toUpperCase(), labelStyle).setOrigin(0.5, 0).setAlpha(0.35);
   }
 }

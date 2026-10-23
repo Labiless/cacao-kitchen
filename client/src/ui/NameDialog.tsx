@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { MAX_NAME_LENGTH, Message, cleanName } from "@cacao/shared";
+import { MAX_NAME_LENGTH, Message, ROLE_INFO, cleanName } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { loadPlayerName, savePlayerName } from "../playerName.ts";
 
@@ -10,6 +10,7 @@ interface Props {
 
 export function NameDialog({ room, onDone }: Props) {
   const [name, setName] = useState(loadPlayerName);
+  const role = room.state.players.get(room.sessionId)?.role;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -23,7 +24,12 @@ export function NameDialog({ room, onDone }: Props) {
   return (
     <div className="backdrop">
       <form className="card dialog" onSubmit={submit}>
-        <h2>Benvenuto in cucina!</h2>
+        <h2>Benvenuto!</h2>
+        {role && (
+          <p className="hint">
+            Sarai il <strong>{ROLE_INFO[role].label.toLowerCase()}</strong>: lavori in {ROLE_INFO[role].area.toLowerCase()}.
+          </p>
+        )}
         <label>
           Come ti chiami?
           <input

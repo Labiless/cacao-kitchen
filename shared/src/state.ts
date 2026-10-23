@@ -1,7 +1,9 @@
 import { schema, t, type SchemaType } from "@colyseus/schema";
+import type { Role } from "./index.ts";
 
 export const Player = schema({
   name: t.string(),
+  role: t.string<Role>(),
   color: t.string(),
   x: t.number(),
   y: t.number(),

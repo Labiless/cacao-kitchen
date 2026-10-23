@@ -3,14 +3,18 @@ import {
   KitchenState,
   MAX_PLAYERS,
   Message,
-  PLAYER_COLORS,
   PLAYER_SIZE,
   PLAYER_SPEED,
   Player,
+  ROLES,
+  ROLE_INFO,
   WORLD,
   cleanName,
+  isRole,
+  zoneFor,
   type InputState,
   type JoinOptions,
+  type Role,
 } from "@cacao/shared";
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
@@ -43,19 +47,26 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   onJoin(client: Client, options: JoinOptions) {
-    const taken = new Set([...this.state.players.values()].map((p) => p.color));
-    const color = PLAYER_COLORS.find((c) => !taken.has(c)) ?? PLAYER_COLORS[0];
-    const index = this.state.players.size;
+    const role = this.pickRole(options?.role);
+    const zone = zoneFor(role);
 
     const player = new Player();
-    player.name = cleanName(options?.name) || `Cuoco ${index + 1}`;
-    player.color = color;
-    player.x = WORLD.width * (index === 0 ? 0.3 : 0.7);
+    player.role = role;
+    player.name = cleanName(options?.name) || ROLE_INFO[role].label;
+    player.color = ROLE_INFO[role].color;
+    player.x = (zone.minX + zone.maxX) / 2;
     player.y = WORLD.height / 2;
 
     this.state.players.set(client.sessionId, player);
     this.heldKeys.set(client.sessionId, NO_INPUT);
-    console.log(`[${this.roomId}] ${player.name} joined`);
+    console.log(`[${this.roomId}] ${player.name} joined as ${role}`);
+  }
+
+  /** The requested role if it's still free, otherwise whichever one is left. */
+  private pickRole(preferred: unknown): Role {
+    const taken = new Set([...this.state.players.values()].map((p) => p.role));
+    if (isRole(preferred) && !taken.has(preferred)) return preferred;
+    return ROLES.find((role) => !taken.has(role)) ?? ROLES[0];
   }
 
   onLeave(client: Client) {
@@ -66,6 +77,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private update(dt: number) {
     const half = PLAYER_SIZE / 2;
     this.state.players.forEach((player, sessionId) => {
+      const zone = zoneFor(player.role);
       const input = this.heldKeys.get(sessionId) ?? NO_INPUT;
       let dx = Number(input.right) - Number(input.left);
       let dy = Number(input.down) - Number(input.up);
@@ -76,7 +88,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       dx /= length;
       dy /= length;
 
-      player.x = clamp(player.x + dx * PLAYER_SPEED * dt, half, WORLD.width - half);
+      player.x = clamp(player.x + dx * PLAYER_SPEED * dt, zone.minX, zone.maxX);
       player.y = clamp(player.y + dy * PLAYER_SPEED * dt, half, WORLD.height - half);
     });
   }

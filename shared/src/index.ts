@@ -10,7 +10,28 @@ export const PLAYER_SIZE = 40;
 /** Pixels per second. */
 export const PLAYER_SPEED = 220;
 
-export const PLAYER_COLORS = ["#e8833a", "#3aa7a3"] as const;
+/** Vertical wall in the middle of the map: kitchen on the left, dining hall on the right. */
+export const WALL = { x: WORLD.width / 2, thickness: 20 } as const;
+
+export const ROLES = ["kitchen", "hall"] as const;
+export type Role = (typeof ROLES)[number];
+
+export const ROLE_INFO: Record<Role, { label: string; area: string; color: string }> = {
+  kitchen: { label: "Cuoco", area: "Cucina", color: "#e8833a" },
+  hall: { label: "Cameriere", area: "Sala", color: "#3aa7a3" },
+};
+
+export function isRole(value: unknown): value is Role {
+  return ROLES.includes(value as Role);
+}
+
+/** Horizontal range a player's center may occupy: their own half, minus the wall. */
+export function zoneFor(role: Role) {
+  const half = PLAYER_SIZE / 2;
+  return role === "kitchen"
+    ? { minX: half, maxX: WALL.x - WALL.thickness / 2 - half }
+    : { minX: WALL.x + WALL.thickness / 2 + half, maxX: WORLD.width - half };
+}
 
 export const MAX_NAME_LENGTH = 16;
 
@@ -30,6 +51,8 @@ export interface InputState {
 export interface JoinOptions {
   /** Optional: players joining from an invite link pick their name once inside. */
   name?: string;
+  /** Only honored for the room creator; whoever joins next gets the other role. */
+  role?: Role;
 }
 
 /** Trims and caps a player-provided name; returns "" if nothing usable is left. */
