@@ -43,6 +43,16 @@ const NO_INPUT: InputState = { left: false, right: false, up: false, down: false
 /** Delay before the very first customer, so players have a moment to look around. */
 const FIRST_CUSTOMER_DELAY_MS = 3000;
 
+/** Temporary, until the kitchen exists: seconds after ordering before the food shows up on its own. */
+const FOOD_ARRIVES_AFTER_S = 5;
+
+/** Customer statuses that end on their own after a while, and what comes next. */
+const TIMED_STATUSES: Partial<Record<CustomerStatus, { seconds: number; next: CustomerStatus }>> = {
+  readingMenu: { seconds: CUSTOMER_TIMING.readingMenuS, next: "readyToOrder" },
+  waitingFood: { seconds: FOOD_ARRIVES_AFTER_S, next: "eating" },
+  eating: { seconds: CUSTOMER_TIMING.eatingS, next: "readyToLeave" },
+};
+
 export class KitchenRoom extends Room<{ state: KitchenState }> {
   maxClients = MAX_PLAYERS;
   state = new KitchenState();
@@ -52,8 +62,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private heldKeys = new Map<string, InputState>();
   /** When each player's current action completes. */
   private actionEndsAt = new Map<string, number>();
-  /** When each customer reading the menu becomes ready to order. */
-  private readyToOrderAt = new Map<string, number>();
+  /** When each customer in a TIMED_STATUSES status moves on to the next one. */
+  private statusEndsAt = new Map<string, number>();
   private nextCustomerAt = 0;
   private customerCount = 0;
   private orderCount = 0;
@@ -170,9 +180,21 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         customer.y = seat.y;
         table.status = "occupied";
         this.setCustomerStatus(customer, "readingMenu");
-        this.readyToOrderAt.set(customer.id, this.clock.currentTime + CUSTOMER_TIMING.readingMenuS * 1000);
         break;
       }
+      case "escort": {
+        const customer = this.state.customers.get(interaction.customerId)!;
+        // They get up: the table is left dirty.
+        const table = this.state.tables.get(customer.tableId);
+        if (table) table.status = "dirty";
+        customer.tableId = "";
+        customer.waiterId = sessionId;
+        this.setCustomerStatus(customer, "escortedOut");
+        break;
+      }
+      case "farewell":
+        this.sendAway(this.state.customers.get(interaction.customerId)!);
+        break;
       case "action":
         player.action = interaction.action;
         player.actionTarget = interaction.tableId;
@@ -259,25 +281,26 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         }
       }
 
+      const timed = TIMED_STATUSES[customer.status];
+      if (timed && now >= (this.statusEndsAt.get(customer.id) ?? 0)) {
+        this.setCustomerStatus(customer, timed.next);
+        return;
+      }
+
       switch (customer.status) {
-        case "following": {
+        case "following":
+        case "escortedOut": {
           const leader = this.state.players.get(customer.waiterId);
           if (leader) {
             this.follow(customer, leader, dt);
           } else {
-            // Their waiter left the room: they stop and wait where they are.
+            // Their waiter left the room: they stop where they are and wait for someone else,
+            // keeping the patience they had left.
             customer.waiterId = "";
-            this.setCustomerStatus(customer, "waiting");
+            customer.status = customer.status === "following" ? "waiting" : "readyToLeave";
           }
           break;
         }
-
-        case "readingMenu":
-          if (now >= (this.readyToOrderAt.get(customer.id) ?? 0)) {
-            this.readyToOrderAt.delete(customer.id);
-            this.setCustomerStatus(customer, "readyToOrder");
-          }
-          break;
 
         case "ordering": {
           // The dialog was abandoned: the waiter left the room or walked off.
@@ -289,10 +312,14 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     });
   }
 
-  /** Changes status, refilling patience when entering a status where it drains. */
+  /** Changes status, refilling patience if it drains in the new status and starting its timer if it has one. */
   private setCustomerStatus(customer: Customer, status: CustomerStatus) {
     customer.status = status;
     if (CUSTOMER_TIMING.patienceS[status]) customer.patience = 1;
+
+    const timed = TIMED_STATUSES[status];
+    if (timed) this.statusEndsAt.set(customer.id, this.clock.currentTime + timed.seconds * 1000);
+    else this.statusEndsAt.delete(customer.id);
   }
 
   /** Back to waiting for the waiter, keeping the patience they had left. */
@@ -328,9 +355,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private sendAway(customer: Customer) {
     customer.status = "leaving";
     customer.waiterId = "";
-    this.readyToOrderAt.delete(customer.id);
+    this.statusEndsAt.delete(customer.id);
 
-    // A table they sat at needs cleaning.
+    // A table they were still sitting at needs cleaning.
     const table = this.state.tables.get(customer.tableId);
     if (table) table.status = "dirty";
 

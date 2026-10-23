@@ -182,7 +182,7 @@ export class KitchenScene extends Phaser.Scene {
 
   /** The thing to highlight for an interaction: the customer to hook or serve, or the table to use. */
   private interactionTarget(interaction: Interaction) {
-    if (interaction.kind === "lead" || interaction.kind === "takeOrder") {
+    if (interaction.kind !== "seat" && interaction.kind !== "action") {
       const sprite = this.customers.get(interaction.customerId);
       return sprite && { kind: "customer", id: interaction.customerId, x: sprite.body.x, top: sprite.body.y - CUSTOMER_SIZE / 2 - 12 };
     }
@@ -278,6 +278,8 @@ export class KitchenScene extends Phaser.Scene {
       readyToOrder: "✋",
       ordering: "📝",
       waitingFood: MENU[customer.wants]?.emoji,
+      eating: "😋",
+      readyToLeave: "👋",
     };
     this.customers.get(id)?.icon.setText(icons[customer.status] ?? "");
   }
@@ -342,13 +344,13 @@ export class KitchenScene extends Phaser.Scene {
 
     // Doormat where customers come in.
     g.fillStyle(0x9c3d54, 0.55);
-    g.fillRect(ENTRANCE.x - 35, ENTRANCE.y - 35, 70, 70);
+    g.fillRect(ENTRANCE.x - ENTRANCE.size / 2, ENTRANCE.y - ENTRANCE.size / 2, ENTRANCE.size, ENTRANCE.size);
 
     const labelStyle = { ...TEXT_STYLE, fontSize: "18px", fontStyle: "bold" };
     this.add.text(WALL.x / 2, 16, ROLE_INFO.kitchen.area.toUpperCase(), labelStyle).setOrigin(0.5, 0).setAlpha(0.35);
     this.add.text((WALL.x + WORLD.width) / 2, 16, ROLE_INFO.hall.area.toUpperCase(), labelStyle).setOrigin(0.5, 0).setAlpha(0.35);
     this.add
-      .text(ENTRANCE.x, ENTRANCE.y + 35, "Ingresso", { ...TEXT_STYLE, fontSize: "12px" })
+      .text(ENTRANCE.x, ENTRANCE.y + ENTRANCE.size / 2, "Ingresso", { ...TEXT_STYLE, fontSize: "12px" })
       .setOrigin(0.5, 1)
       .setAlpha(0.6);
   }

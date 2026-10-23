@@ -20,8 +20,8 @@ export const TABLE_LAYOUT = [
   { id: "t1", x: 640, y: 180 },
 ] as const;
 
-/** Where customers appear and wait to be led to a table. */
-export const ENTRANCE = { x: WORLD.width - 40, y: WORLD.height - 50 } as const;
+/** Doormat where customers come in, wait to be led to a table, and are shown out. */
+export const ENTRANCE = { x: WORLD.width - 40, y: WORLD.height - 50, size: 70 } as const;
 
 export const CUSTOMER_SIZE = 30;
 export const CUSTOMER_COLOR = "#b5577a";
@@ -35,9 +35,11 @@ export const CUSTOMER_TIMING = {
    * Seconds of patience in each status where the customer is waiting on the waiter.
    * Patience refills on entering each of these and is paused in every other status.
    */
-  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60 } as Partial<Record<CustomerStatus, number>>,
+  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60, readyToLeave: 30 } as Partial<Record<CustomerStatus, number>>,
   /** Seconds a seated customer spends reading the menu before they're ready to order. */
   readingMenuS: 4,
+  /** Seconds a customer spends eating before they want to leave. */
+  eatingS: 6,
   /** Seconds between a customer leaving and the next one arriving. */
   spawnDelayS: 4,
   /** Seconds a leaving customer stays visible, so players see how it went. */
@@ -51,10 +53,14 @@ export const CUSTOMER_TIMING = {
  * readyToOrder → wants to order, patience running out
  * ordering     → the waiter is taking their order
  * waitingFood  → order sent, patience running out
+ * eating       → food served
+ * readyToLeave → done eating, waits at the table to be shown out, patience running out
+ * escortedOut  → hooked by the waiter, walks behind them towards the exit
  * leaving      → about to disappear; patience 0 means they left angry
  */
 export const CUSTOMER_STATUSES = [
-  "waiting", "following", "readingMenu", "readyToOrder", "ordering", "waitingFood", "leaving",
+  "waiting", "following", "readingMenu", "readyToOrder", "ordering", "waitingFood",
+  "eating", "readyToLeave", "escortedOut", "leaving",
 ] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
 
@@ -88,6 +94,11 @@ export function isNearTable(p: Point, table: Point) {
 /** Whether a player centered at `p` is close enough to interact with the customer at `customer`. */
 export function isNearCustomer(p: Point, customer: Point) {
   return withinReach(p, PLAYER_SIZE, customer, CUSTOMER_SIZE);
+}
+
+/** Whether a player centered at `p` is close enough to the entrance mat to show a customer out. */
+export function isNearEntrance(p: Point) {
+  return withinReach(p, PLAYER_SIZE, ENTRANCE, ENTRANCE.size);
 }
 
 /** Where a customer sits at a table: on its top edge. */

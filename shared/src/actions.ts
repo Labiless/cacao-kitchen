@@ -1,8 +1,8 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
-// either an instant interaction (hooking or seating a customer, opening the order dialog)
+// either an instant interaction (hooking, seating or showing out a customer, opening the order dialog)
 // or a timed action, which completes after `durationMs` unless the player walks out of reach first.
 
-import { isNearCustomer, isNearTable, type TableStatus } from "./hall.ts";
+import { isNearCustomer, isNearEntrance, isNearTable, type TableStatus } from "./hall.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState } from "./state.ts";
 
@@ -20,6 +20,8 @@ export type Interaction =
   | { kind: "lead"; customerId: string }
   | { kind: "seat"; customerId: string; tableId: string }
   | { kind: "takeOrder"; customerId: string }
+  | { kind: "escort"; customerId: string }
+  | { kind: "farewell"; customerId: string }
   | { kind: "action"; action: ActionId; tableId: string };
 
 export function interactionLabel(interaction: Interaction) {
@@ -27,6 +29,8 @@ export function interactionLabel(interaction: Interaction) {
     case "lead": return "Accompagna al tavolo";
     case "seat": return "Fai sedere";
     case "takeOrder": return "Prendi l'ordinazione";
+    case "escort": return "Accompagna all'uscita";
+    case "farewell": return "Saluta il cliente";
     case "action": return ACTIONS[interaction.action].label;
   }
 }
@@ -60,18 +64,22 @@ export function availableInteraction(
   if (attendedCustomer(state, sessionId, "ordering")) return null;
   const at = position ?? player;
 
-  const led = attendedCustomer(state, sessionId, "following");
-  if (led) {
+  const toTable = attendedCustomer(state, sessionId, "following");
+  const toExit = attendedCustomer(state, sessionId, "escortedOut");
+  if (toTable) {
     for (const table of state.tables.values()) {
       if (table.status === "free" && isNearTable(at, table)) {
-        return { kind: "seat", customerId: led.id, tableId: table.id };
+        return { kind: "seat", customerId: toTable.id, tableId: table.id };
       }
     }
+  } else if (toExit) {
+    if (isNearEntrance(at)) return { kind: "farewell", customerId: toExit.id };
   } else {
     for (const customer of state.customers.values()) {
       if (!canReachCustomer(state, at, customer)) continue;
       if (customer.status === "waiting") return { kind: "lead", customerId: customer.id };
       if (customer.status === "readyToOrder") return { kind: "takeOrder", customerId: customer.id };
+      if (customer.status === "readyToLeave") return { kind: "escort", customerId: customer.id };
     }
   }
 
