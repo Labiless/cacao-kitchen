@@ -25,11 +25,12 @@ import {
   canReachCustomer,
   cleanName,
   isMenuItem,
-  isNearTicketRail,
+  freeTicketSlot,
+  isNearTicketSlot,
   isNearTable,
   isRole,
   overlapsTable,
-  overlapsTicketRail,
+  overlapsTicketSlots,
   seatPosition,
   tableActionFor,
   zoneFor,
@@ -103,11 +104,13 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     this.onMessage(Message.PlaceOrder, (client, message: PlaceOrderMessage) => {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
-      if (!customer || !isMenuItem(message?.item)) return;
+      const slot = freeTicketSlot(this.state);
+      if (!customer || !isMenuItem(message?.item) || slot === null) return;
 
       const ticket = new Ticket();
       ticket.number = ++this.ticketCount;
       ticket.id = `k${ticket.number}`;
+      ticket.slot = slot;
       ticket.tableId = customer.tableId;
       ticket.item = message.item;
       this.state.tickets.set(ticket.id, ticket);
@@ -123,8 +126,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     this.onMessage(Message.DiscardTicket, (client, message: DiscardTicketMessage) => {
       const player = this.state.players.get(client.sessionId);
-      if (player?.role !== "kitchen" || !isNearTicketRail(player)) return;
-      this.state.tickets.delete(String(message?.ticketId));
+      const ticket = this.state.tickets.get(String(message?.ticketId));
+      if (player?.role !== "kitchen" || !ticket || !isNearTicketSlot(player, ticket.slot)) return;
+      this.state.tickets.delete(ticket.id);
     });
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
@@ -204,6 +208,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       case "farewell":
         this.sendAway(this.state.customers.get(interaction.customerId)!);
         break;
+      case "readTicket":
+      case "blocked":
+        // Nothing to do on the server: reading happens in the client's popup.
+        break;
       case "action":
         player.action = interaction.action;
         player.actionTarget = interaction.tableId;
@@ -266,7 +274,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   private hitsObstacle(x: number, y: number) {
-    if (overlapsTicketRail({ x, y })) return true;
+    if (overlapsTicketSlots({ x, y })) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }

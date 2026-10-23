@@ -157,8 +157,7 @@ button.danger { background: #c0392b; }
   gap: 8px;
 }
 
-.tickets-dialog { width: min(340px, 100%); }
-.tickets-dialog h2 { margin: 0; font-size: 20px; }
+.ticket-dialog { width: min(340px, 100%); }
 .ticket {
   padding: 14px 16px 18px;
   background: #fffdf6;
@@ -176,12 +175,3 @@ button.danger { background: #c0392b; }
   color: var(--muted);
 }
 .ticket-item { margin: 12px 0 0; font-size: 18px; }
-.ticket-nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  font-size: 14px;
-  color: var(--muted);
-}
-.ticket-nav button { padding: 6px 12px; }

@@ -3,7 +3,7 @@ import { WORLD } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { KitchenScene } from "./KitchenScene.ts";
 
-export { MODAL_OPEN_KEY, OPEN_TICKETS_EVENT } from "./KitchenScene.ts";
+export { MODAL_OPEN_KEY, OPEN_TICKET_EVENT } from "./KitchenScene.ts";
 
 export function createGame(parent: HTMLElement, room: KitchenRoom) {
   return new Phaser.Game({

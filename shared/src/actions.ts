@@ -1,9 +1,10 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
-// either an instant interaction (hooking, seating or showing out a customer, opening the order dialog)
-// or a timed action, which completes after `durationMs` unless the player walks out of reach first.
+// either an instant interaction (hooking, seating or showing out a customer, opening the order dialog,
+// reading a ticket) or a timed action, which completes after `durationMs` unless the player walks out of
+// reach first. A "blocked" interaction only explains why E does nothing right now.
 
 import { isNearCustomer, isNearEntrance, isNearTable, type TableStatus } from "./hall.ts";
-import { isNearTicketRail } from "./kitchen.ts";
+import { freeTicketSlot, nearestTicket } from "./kitchen.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState } from "./state.ts";
 
@@ -23,8 +24,9 @@ export type Interaction =
   | { kind: "takeOrder"; customerId: string }
   | { kind: "escort"; customerId: string }
   | { kind: "farewell"; customerId: string }
-  /** Client-only: opens the tickets popup. The server isn't involved until a ticket is thrown away. */
-  | { kind: "readTickets" }
+  /** Client-only: opens the ticket popup. The server isn't involved until the ticket is thrown away. */
+  | { kind: "readTicket"; ticketId: string }
+  | { kind: "blocked"; customerId: string; reason: string }
   | { kind: "action"; action: ActionId; tableId: string };
 
 export function interactionLabel(interaction: Interaction) {
@@ -34,7 +36,8 @@ export function interactionLabel(interaction: Interaction) {
     case "takeOrder": return "Prendi l'ordinazione";
     case "escort": return "Accompagna all'uscita";
     case "farewell": return "Saluta il cliente";
-    case "readTickets": return "Leggi le comande";
+    case "readTicket": return "Leggi la comanda";
+    case "blocked": return interaction.reason;
     case "action": return ACTIONS[interaction.action].label;
   }
 }
@@ -68,7 +71,8 @@ export function availableInteraction(
   const at = position ?? player;
 
   if (player.role === "kitchen") {
-    return isNearTicketRail(at) ? { kind: "readTickets" } : null;
+    const ticket = nearestTicket(state, at);
+    return ticket ? { kind: "readTicket", ticketId: ticket.id } : null;
   }
 
   if (attendedCustomer(state, sessionId, "ordering")) return null;
@@ -87,7 +91,11 @@ export function availableInteraction(
     for (const customer of state.customers.values()) {
       if (!canReachCustomer(state, at, customer)) continue;
       if (customer.status === "waiting") return { kind: "lead", customerId: customer.id };
-      if (customer.status === "readyToOrder") return { kind: "takeOrder", customerId: customer.id };
+      if (customer.status === "readyToOrder") {
+        return freeTicketSlot(state) === null
+          ? { kind: "blocked", customerId: customer.id, reason: "Comande piene in cucina" }
+          : { kind: "takeOrder", customerId: customer.id };
+      }
       if (customer.status === "readyToLeave") return { kind: "escort", customerId: customer.id };
     }
   }

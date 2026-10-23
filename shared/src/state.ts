@@ -49,6 +49,8 @@ export const Ticket = schema({
   id: t.string(),
   /** Progressive number printed on the ticket. */
   number: t.number(),
+  /** Where it hangs on the kitchen wall (index into TICKET_SLOTS). */
+  slot: t.uint8(),
   tableId: t.string(),
   /** What the waiter selected, which may not be what the customer asked for. */
   item: t.string<MenuItemId>(),

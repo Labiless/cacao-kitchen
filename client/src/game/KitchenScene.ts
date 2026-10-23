@@ -12,7 +12,8 @@ import {
   ROLE_INFO,
   TABLE_SIZE,
   TABLE_STATUS_INFO,
-  TICKET_RAIL,
+  TICKET_SLOTS,
+  TICKET_SLOT_SIZE,
   WALL,
   WORLD,
   attendedCustomer,
@@ -54,8 +55,8 @@ const HIGHLIGHT = { width: 4, color: 0xfff3c4 } as const;
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
-/** Game event asking React to open the tickets popup. */
-export const OPEN_TICKETS_EVENT = "openTickets";
+/** Game event asking React to open the popup of a ticket; the payload is the ticket id. */
+export const OPEN_TICKET_EVENT = "openTicket";
 /** Registry key React sets while one of its popups is open, so the scene ignores movement and E. */
 export const MODAL_OPEN_KEY = "modalOpen";
 
@@ -66,9 +67,8 @@ export class KitchenScene extends Phaser.Scene {
   private sprites = new Map<string, PlayerSprite>();
   private customers = new Map<string, CustomerSprite>();
   private tables = new Map<string, TableSprite>();
-  private ticketRail!: Phaser.GameObjects.Rectangle;
-  /** Blank slips on the rail: the cook sees how many tickets there are, not what they say. */
-  private ticketSlips!: Phaser.GameObjects.Graphics;
+  /** Blank slips on the wall, by ticket id: the cook sees where tickets are, not what they say. */
+  private tickets = new Map<string, Phaser.GameObjects.Rectangle>();
   /** Local time (scene clock) at which each player's current action started, to animate its progress bar. */
   private actionStartedAt = new Map<string, number>();
   private bars!: Phaser.GameObjects.Graphics;
@@ -82,10 +82,6 @@ export class KitchenScene extends Phaser.Scene {
 
   create() {
     this.drawMap();
-    this.ticketRail = this.add
-      .rectangle(TICKET_RAIL.x, TICKET_RAIL.y, TICKET_RAIL.size, TICKET_RAIL.size, 0x6e4b33)
-      .setDepth(Depth.Table);
-    this.ticketSlips = this.add.graphics().setDepth(Depth.Table);
 
     // No key capture: otherwise Phaser swallows these keys and they can't be typed into React inputs.
     this.keys = this.input.keyboard!.addKeys({
@@ -137,8 +133,15 @@ export class KitchenScene extends Phaser.Scene {
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
 
-      callbacks.onAdd("tickets", () => this.drawTicketSlips()),
-      callbacks.onRemove("tickets", () => this.drawTicketSlips()),
+      callbacks.onAdd("tickets", (ticket, id) => {
+        const { x, y } = TICKET_SLOTS[ticket.slot];
+        const slip = this.add.rectangle(x, y, TICKET_SLOT_SIZE - 8, TICKET_SLOT_SIZE - 4, 0xfffdf6).setDepth(Depth.Table);
+        this.tickets.set(id, slip);
+      }),
+      callbacks.onRemove("tickets", (_ticket, id) => {
+        this.tickets.get(id)?.destroy();
+        this.tickets.delete(id);
+      }),
     );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => unsubscribe.forEach((off) => off()));
   }
@@ -174,8 +177,8 @@ export class KitchenScene extends Phaser.Scene {
   private interact() {
     if (document.activeElement instanceof HTMLInputElement || this.registry.get(MODAL_OPEN_KEY)) return;
     const interaction = this.currentInteraction();
-    if (!interaction) return;
-    if (interaction.kind === "readTickets") this.game.events.emit(OPEN_TICKETS_EVENT);
+    if (!interaction || interaction.kind === "blocked") return;
+    if (interaction.kind === "readTicket") this.game.events.emit(OPEN_TICKET_EVENT, interaction.ticketId);
     else this.room.send(Message.Interact);
   }
 
@@ -192,26 +195,40 @@ export class KitchenScene extends Phaser.Scene {
       if (target?.kind === "customer" && target.id === id) body.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
       else body.setStrokeStyle();
     }
-    if (target?.kind === "rail") this.ticketRail.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
-    else this.ticketRail.setStrokeStyle();
+    for (const [id, slip] of this.tickets) {
+      if (target?.kind === "ticket" && target.id === id) slip.setStrokeStyle(3, 0xe8833a);
+      else slip.setStrokeStyle(1, 0xb9a88f);
+    }
 
     this.hint.setVisible(!!target);
     if (interaction && target) {
-      this.hint.setText(`E · ${interactionLabel(interaction)}`).setPosition(target.x, target.top - 6);
+      const key = interaction.kind === "blocked" ? "⛔" : "E ·";
+      this.hint.setText(`${key} ${interactionLabel(interaction)}`);
+      // Things on the top wall have no room above them: show the hint underneath instead.
+      if (target.top < 40) this.hint.setOrigin(0.5, 0).setPosition(target.x, target.bottom + 6);
+      else this.hint.setOrigin(0.5, 1).setPosition(target.x, target.top - 6);
     }
   }
 
-  /** The thing to highlight for an interaction: a customer, a table or the ticket rail. */
+  /** The thing to highlight for an interaction (a customer, a table or a ticket) and where its edges are. */
   private interactionTarget(interaction: Interaction) {
-    if (interaction.kind === "readTickets") {
-      return { kind: "rail", id: "", x: TICKET_RAIL.x, top: TICKET_RAIL.y - TICKET_RAIL.size / 2 };
+    if (interaction.kind === "readTicket") {
+      const slip = this.tickets.get(interaction.ticketId);
+      if (!slip) return null;
+      const half = TICKET_SLOT_SIZE / 2;
+      return { kind: "ticket", id: interaction.ticketId, x: slip.x, top: slip.y - half, bottom: slip.y + half };
     }
-    if (interaction.kind !== "seat" && interaction.kind !== "action") {
-      const sprite = this.customers.get(interaction.customerId);
-      return sprite && { kind: "customer", id: interaction.customerId, x: sprite.body.x, top: sprite.body.y - CUSTOMER_SIZE / 2 - 12 };
+    if (interaction.kind === "seat" || interaction.kind === "action") {
+      const table = this.room.state.tables.get(interaction.tableId);
+      if (!table) return null;
+      const half = TABLE_SIZE / 2;
+      return { kind: "table", id: interaction.tableId, x: table.x, top: table.y - half, bottom: table.y + half };
     }
-    const table = this.room.state.tables.get(interaction.tableId);
-    return table && { kind: "table", id: interaction.tableId, x: table.x, top: table.y - TABLE_SIZE / 2 };
+    const sprite = this.customers.get(interaction.customerId);
+    if (!sprite) return null;
+    const { x, y } = sprite.body;
+    const half = CUSTOMER_SIZE / 2;
+    return { kind: "customer", id: interaction.customerId, x, top: y - half - 12, bottom: y + half };
   }
 
   /** A bar above the target of every action in progress, so both players can see it. */
@@ -328,17 +345,6 @@ export class KitchenScene extends Phaser.Scene {
     this.customers.delete(id);
   }
 
-  private drawTicketSlips() {
-    const shown = Math.min(this.room.state.tickets.size, 6);
-    this.ticketSlips.clear();
-    for (let i = 0; i < shown; i++) {
-      const x = TICKET_RAIL.x - TICKET_RAIL.size / 2 - 6 + (i % 2) * 3;
-      const y = TICKET_RAIL.y + TICKET_RAIL.size / 2 - 4 + i * 6;
-      this.ticketSlips.fillStyle(0xfffdf6).fillRect(x, y, 16, 20);
-      this.ticketSlips.lineStyle(1, 0xb9a88f).strokeRect(x, y, 16, 20);
-    }
-  }
-
   private addTable(id: string, table: Table) {
     const body = this.add.rectangle(table.x, table.y, TABLE_SIZE, TABLE_SIZE).setDepth(Depth.Table);
     const label = this.add
@@ -378,13 +384,21 @@ export class KitchenScene extends Phaser.Scene {
     g.fillStyle(0x5a4232);
     g.fillRect(WALL.x - WALL.thickness / 2, 0, WALL.thickness, WORLD.height);
 
+    // Pins on the kitchen wall where tickets hang.
+    for (const { x, y } of TICKET_SLOTS) {
+      g.fillStyle(0x6e4b33);
+      g.fillRect(x - TICKET_SLOT_SIZE / 2, y - TICKET_SLOT_SIZE / 2, TICKET_SLOT_SIZE, TICKET_SLOT_SIZE);
+    }
+
     // Doormat where customers come in.
     g.fillStyle(0x9c3d54, 0.55);
     g.fillRect(ENTRANCE.x - ENTRANCE.size / 2, ENTRANCE.y - ENTRANCE.size / 2, ENTRANCE.size, ENTRANCE.size);
 
     const labelStyle = { ...TEXT_STYLE, fontSize: "18px", fontStyle: "bold" };
-    this.add.text(WALL.x / 2, 16, ROLE_INFO.kitchen.area.toUpperCase(), labelStyle).setOrigin(0.5, 0).setAlpha(0.35);
-    this.add.text((WALL.x + WORLD.width) / 2, 16, ROLE_INFO.hall.area.toUpperCase(), labelStyle).setOrigin(0.5, 0).setAlpha(0.35);
+    // Area names at the bottom: the top kitchen wall holds the tickets.
+    const labelY = WORLD.height - 16;
+    this.add.text(WALL.x / 2, labelY, ROLE_INFO.kitchen.area.toUpperCase(), labelStyle).setOrigin(0.5, 1).setAlpha(0.35);
+    this.add.text((WALL.x + WORLD.width) / 2, labelY, ROLE_INFO.hall.area.toUpperCase(), labelStyle).setOrigin(0.5, 1).setAlpha(0.35);
     this.add
       .text(ENTRANCE.x, ENTRANCE.y + ENTRANCE.size / 2, "Ingresso", { ...TEXT_STYLE, fontSize: "12px" })
       .setOrigin(0.5, 1)
