@@ -91,6 +91,19 @@ input {
 }
 .game-container { width: 100%; height: 100%; }
 
+.money {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+}
+
 .room-code {
   position: absolute;
   top: 16px;

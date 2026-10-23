@@ -250,6 +250,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         const customer = this.state.customers.get(interaction.customerId)!;
         player.holding = "";
         if (interaction.dish === customer.wants) {
+          customer.bill += MENU[interaction.dish].priceCents;
           this.setCustomerStatus(customer, "eating");
         } else {
           // Not what they asked for: they storm out.
@@ -289,7 +290,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         break;
       case "checkout": {
         const customer = this.state.customers.get(player.actionTarget)!;
-        this.state.earnings += MENU[customer.wants].price;
+        this.state.money += customer.bill;
         this.sendAway(customer);
         break;
       }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { attendedCustomer, type MenuItemId } from "@cacao/shared";
+import { attendedCustomer, formatMoney, type MenuItemId } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
 import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, createGame, type KitchenPopup } from "../game/createGame.ts";
@@ -20,6 +20,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<ReturnType<typeof createGame> | null>(null);
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
+  const [money, setMoney] = useState(room.state.money);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
   /** Popup opened from the scene (reading a ticket, the fridge), if any. */
   const [popup, setPopup] = useState<KitchenPopup | null>(null);
@@ -47,9 +48,10 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
     return () => room.onLeave.remove(onLeave);
   }, [room, onLeave]);
 
-  // Open the order dialog while this player is taking someone's order.
+  // Open the order dialog while this player is taking someone's order; keep the money counter current.
   useEffect(() => {
     const sync = () => {
+      setMoney(room.state.money);
       const customer = attendedCustomer(room.state, room.sessionId, "ordering");
       setOrdering((current) => {
         if (current?.customerId === customer?.id) return current;
@@ -78,6 +80,8 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   return (
     <div className="game-layout">
       <div className="game-container" ref={containerRef} />
+
+      <div className="money" title="Cassa del ristorante">💰 {formatMoney(money)}</div>
 
       <button className="room-code" title="Copia il link d'invito" onClick={copyInvite}>
         {copied === "ok" ? "Link copiato!" : copied === "error" ? "Copia non riuscita" : room.roomId}

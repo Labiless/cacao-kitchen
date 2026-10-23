@@ -41,6 +41,8 @@ export const Customer = schema({
   tableId: t.string().default(""),
   /** What they're going to ask for. */
   wants: t.string<MenuItemId>(),
+  /** What they owe for what they've been served, in cents; paid at the till. */
+  bill: t.number().default(0),
 }, "Customer");
 export type Customer = SchemaType<typeof Customer>;
 
@@ -77,7 +79,7 @@ export const KitchenState = schema({
   pass: t.array("string"),
   /** Ids of the customers queuing at the till, front of the queue first. */
   queue: t.array("string"),
-  /** Money taken at the till so far, in euros. */
-  earnings: t.number().default(0),
+  /** The restaurant's money, in cents. */
+  money: t.number().default(0),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;

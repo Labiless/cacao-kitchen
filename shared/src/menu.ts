@@ -1,7 +1,8 @@
 // What customers can order, and the ingredients the kitchen makes it from.
+// Money is always in euro cents (integers), so sums never pick up rounding errors.
 
 export const MENU = {
-  chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda", price: 3 },
+  chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda", priceCents: 350 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];
@@ -31,6 +32,13 @@ export type HeldItem = IngredientId | MenuItemId;
 /** Label and emoji of something a player is carrying. */
 export function heldItemInfo(item: HeldItem): { label: string; emoji: string } {
   return isIngredient(item) ? INGREDIENTS[item] : MENU[item];
+}
+
+const EURO = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
+
+/** Formats an amount in cents for display, e.g. 350 → "3,50 €". */
+export function formatMoney(cents: number) {
+  return EURO.format(cents / 100);
 }
 
 /** Ways a customer can phrase their order; `{item}` is replaced by the item's spoken name. */

@@ -6,7 +6,7 @@
 
 import { isAtQueueSpot, isNearCustomer, isNearRegister, isNearTable, type TableStatus } from "./hall.ts";
 import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, isNearStove, nearestTicket } from "./kitchen.ts";
-import { MENU, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
+import { MENU, formatMoney, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState } from "./state.ts";
 
@@ -40,8 +40,8 @@ export type Interaction =
   | { kind: "serve"; customerId: string; dish: MenuItemId }
   /** E does nothing right now; `reason` says why. It's about either a customer or a kitchen station. */
   | { kind: "blocked"; reason: string; customerId?: string; station?: "stove" | "pass" }
-  /** `targetId` is the table to clean or the customer paying. */
-  | { kind: "action"; action: ActionId; targetId: string };
+  /** `targetId` is the table to clean or the customer paying; `amountCents` is what they're paying. */
+  | { kind: "action"; action: ActionId; targetId: string; amountCents?: number };
 
 export function interactionLabel(interaction: Interaction) {
   switch (interaction.kind) {
@@ -58,7 +58,10 @@ export function interactionLabel(interaction: Interaction) {
     case "takeFromPass": return `Prendi ${MENU[interaction.dish].label}`;
     case "serve": return `Servi ${MENU[interaction.dish].label}`;
     case "blocked": return interaction.reason;
-    case "action": return ACTIONS[interaction.action].label;
+    case "action": {
+      const { label } = ACTIONS[interaction.action];
+      return interaction.amountCents === undefined ? label : `${label} ${formatMoney(interaction.amountCents)}`;
+    }
   }
 }
 
@@ -163,7 +166,9 @@ export function availableInteraction(
       if (interaction) return interaction;
     }
     const payer = customerReadyToPay(state);
-    if (payer && isNearRegister(at)) return { kind: "action", action: "checkout", targetId: payer.id };
+    if (payer && isNearRegister(at)) {
+      return { kind: "action", action: "checkout", targetId: payer.id, amountCents: payer.bill };
+    }
   }
 
   return tableAction(state, at);

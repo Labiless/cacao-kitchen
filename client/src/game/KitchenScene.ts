@@ -25,6 +25,7 @@ import {
   WORLD,
   attendedCustomer,
   availableInteraction,
+  formatMoney,
   heldItemInfo,
   isMenuItem,
   interactionLabel,
@@ -90,7 +91,6 @@ export class KitchenScene extends Phaser.Scene {
   private stoveStartedAt = 0;
   private pass!: Phaser.GameObjects.Rectangle;
   private register!: Phaser.GameObjects.Rectangle;
-  private earnings!: Phaser.GameObjects.Text;
   /** One icon per spot on the pass. */
   private passDishes: Phaser.GameObjects.Text[] = [];
   /** What the pass icons currently show, to redraw only when it changes. */
@@ -128,10 +128,6 @@ export class KitchenScene extends Phaser.Scene {
       .text(REGISTER.x, REGISTER.y, "CASSA", { ...TEXT_STYLE, fontSize: "12px", fontStyle: "bold", color: "#f6efe4" })
       .setOrigin(0.5)
       .setDepth(Depth.Table);
-    this.earnings = this.add
-      .text(REGISTER.x - REGISTER.width / 2 - 8, REGISTER.y, "", { ...TEXT_STYLE, fontSize: "14px", fontStyle: "bold" })
-      .setOrigin(1, 0.5)
-      .setDepth(Depth.Label);
 
     // The pass cuts through the wall, so it's drawn on top of it.
     this.pass = this.add.rectangle(PASS.x, PASS.y, PASS.width, PASS.height, 0xc89b6d).setDepth(Depth.Table);
@@ -198,7 +194,9 @@ export class KitchenScene extends Phaser.Scene {
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
 
-      callbacks.listen("earnings", (earnings) => this.earnings.setText(`Incasso: ${earnings} €`)),
+      callbacks.listen("money", (money, previous) => {
+        if (previous !== undefined && money > previous) this.showMoneyIn(money - previous);
+      }),
 
       callbacks.listen(this.room.state.stove, "status", (status) => {
         if (status === "cooking") this.stoveStartedAt = this.time.now;
@@ -414,6 +412,20 @@ export class KitchenScene extends Phaser.Scene {
     const held = this.add.text(0, 0, this.heldIcon(player), { fontSize: "20px" }).setOrigin(0.5).setDepth(Depth.Label);
 
     this.sprites.set(sessionId, { body, label, held, target: { x: player.x, y: player.y } });
+  }
+
+  /** A "+3,50 €" floating up from the till. */
+  private showMoneyIn(cents: number) {
+    const text = this.add
+      .text(REGISTER.x, REGISTER.y + REGISTER.height / 2, `+${formatMoney(cents)}`, {
+        ...TEXT_STYLE,
+        fontSize: "16px",
+        fontStyle: "bold",
+        color: "#2e7d4f",
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(Depth.Label);
+    this.tweens.add({ targets: text, y: text.y + 30, alpha: 0, duration: 1400, onComplete: () => text.destroy() });
   }
 
   private refreshPass() {
