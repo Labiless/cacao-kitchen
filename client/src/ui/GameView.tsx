@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { attendedCustomer, type MenuItemId } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
-import { MODAL_OPEN_KEY, OPEN_TICKET_EVENT, createGame } from "../game/createGame.ts";
+import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, createGame, type KitchenPopup } from "../game/createGame.ts";
+import { FridgeDialog } from "./FridgeDialog.tsx";
 import { NameDialog } from "./NameDialog.tsx";
 import { OrderDialog } from "./OrderDialog.tsx";
 import { TicketDialog } from "./TicketDialog.tsx";
@@ -19,14 +20,14 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const gameRef = useRef<ReturnType<typeof createGame> | null>(null);
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
-  /** Ticket the cook is reading, if any. */
-  const [openTicketId, setOpenTicketId] = useState<string | null>(null);
+  /** Popup opened from the scene (reading a ticket, the fridge), if any. */
+  const [popup, setPopup] = useState<KitchenPopup | null>(null);
 
   // Phaser owns the canvas; React only mounts/unmounts it.
   useEffect(() => {
     const game = createGame(containerRef.current!, room);
     gameRef.current = game;
-    game.events.on(OPEN_TICKET_EVENT, (ticketId: string) => setOpenTicketId(ticketId));
+    game.events.on(OPEN_POPUP_EVENT, (opened: KitchenPopup) => setPopup(opened));
     return () => {
       gameRef.current = null;
       game.destroy(true);
@@ -35,8 +36,10 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
   // Tell the scene when a React-only popup is open, so the player stands still.
   useEffect(() => {
-    gameRef.current?.registry.set(MODAL_OPEN_KEY, openTicketId !== null);
-  }, [openTicketId]);
+    gameRef.current?.registry.set(MODAL_OPEN_KEY, popup !== null);
+  }, [popup]);
+
+  const closePopup = useCallback(() => setPopup(null), []);
 
   useEffect(() => {
     room.onLeave(onLeave);
@@ -79,7 +82,8 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
         {copied === "ok" ? "Link copiato!" : copied === "error" ? "Copia non riuscita" : room.roomId}
       </button>
 
-      {openTicketId && <TicketDialog room={room} ticketId={openTicketId} onClose={() => setOpenTicketId(null)} />}
+      {popup?.kind === "ticket" && <TicketDialog room={room} ticketId={popup.ticketId} onClose={closePopup} />}
+      {popup?.kind === "fridge" && <FridgeDialog room={room} onClose={closePopup} />}
       {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
     </div>

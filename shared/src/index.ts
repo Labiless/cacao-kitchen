@@ -4,7 +4,7 @@
 // in ./actions.ts, the menu in ./menu.ts.
 
 import { PLAYER_SIZE, WALL, WORLD } from "./world.ts";
-import type { MenuItemId } from "./menu.ts";
+import type { IngredientId, MenuItemId } from "./menu.ts";
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
@@ -43,7 +43,13 @@ export const Message = {
   CancelOrder: "cancelOrder",
   /** Payload: DiscardTicketMessage. The cook throws a ticket away. */
   DiscardTicket: "discardTicket",
+  /** Payload: TakeIngredientMessage. Sent from the fridge popup. */
+  TakeIngredient: "takeIngredient",
 } as const;
+
+export interface TakeIngredientMessage {
+  ingredient: IngredientId;
+}
 
 export interface DiscardTicketMessage {
   ticketId: string;

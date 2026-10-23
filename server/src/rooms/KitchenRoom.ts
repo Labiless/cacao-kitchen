@@ -24,19 +24,22 @@ import {
   availableInteraction,
   canReachCustomer,
   cleanName,
+  isIngredient,
   isMenuItem,
+  isNearFridge,
   freeTicketSlot,
   isNearTicketSlot,
   isNearTable,
   isRole,
   overlapsTable,
-  overlapsTicketSlots,
+  overlapsKitchenFurniture,
   seatPosition,
   tableActionFor,
   zoneFor,
   type InputState,
   type CustomerStatus,
   type DiscardTicketMessage,
+  type TakeIngredientMessage,
   type JoinOptions,
   type PlaceOrderMessage,
   type Role,
@@ -131,6 +134,12 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.state.tickets.delete(ticket.id);
     });
 
+    this.onMessage(Message.TakeIngredient, (client, message: TakeIngredientMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (player?.role !== "kitchen" || player.holding || !isNearFridge(player)) return;
+      if (isIngredient(message?.ingredient)) player.holding = message.ingredient;
+    });
+
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
   }
 
@@ -208,9 +217,13 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       case "farewell":
         this.sendAway(this.state.customers.get(interaction.customerId)!);
         break;
+      case "putBack":
+        player.holding = "";
+        break;
       case "readTicket":
+      case "openFridge":
       case "blocked":
-        // Nothing to do on the server: reading happens in the client's popup.
+        // Nothing to do on the server: these only open a popup (or explain why E does nothing).
         break;
       case "action":
         player.action = interaction.action;
@@ -274,7 +287,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   private hitsObstacle(x: number, y: number) {
-    if (overlapsTicketSlots({ x, y })) return true;
+    if (overlapsKitchenFurniture({ x, y })) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }

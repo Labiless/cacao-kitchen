@@ -6,6 +6,8 @@ import {
   CUSTOMER_SIZE,
   CUSTOMER_TIMING,
   ENTRANCE,
+  FRIDGE,
+  INGREDIENTS,
   MENU,
   Message,
   PLAYER_SIZE,
@@ -31,6 +33,8 @@ import type { KitchenRoom } from "../network.ts";
 interface PlayerSprite {
   body: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
+  /** What they're carrying. */
+  held: Phaser.GameObjects.Text;
   /** Latest authoritative position from the server; we interpolate towards it. */
   target: { x: number; y: number };
 }
@@ -55,8 +59,10 @@ const HIGHLIGHT = { width: 4, color: 0xfff3c4 } as const;
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
-/** Game event asking React to open the popup of a ticket; the payload is the ticket id. */
-export const OPEN_TICKET_EVENT = "openTicket";
+/** A popup that only exists in React, opened from the scene. */
+export type KitchenPopup = { kind: "ticket"; ticketId: string } | { kind: "fridge" };
+/** Game event asking React to open a popup; the payload is a KitchenPopup. */
+export const OPEN_POPUP_EVENT = "openPopup";
 /** Registry key React sets while one of its popups is open, so the scene ignores movement and E. */
 export const MODAL_OPEN_KEY = "modalOpen";
 
@@ -69,6 +75,7 @@ export class KitchenScene extends Phaser.Scene {
   private tables = new Map<string, TableSprite>();
   /** Blank slips on the wall, by ticket id: the cook sees where tickets are, not what they say. */
   private tickets = new Map<string, Phaser.GameObjects.Rectangle>();
+  private fridge!: Phaser.GameObjects.Rectangle;
   /** Local time (scene clock) at which each player's current action started, to animate its progress bar. */
   private actionStartedAt = new Map<string, number>();
   private bars!: Phaser.GameObjects.Graphics;
@@ -82,6 +89,15 @@ export class KitchenScene extends Phaser.Scene {
 
   create() {
     this.drawMap();
+    this.fridge = this.add
+      .rectangle(FRIDGE.x, FRIDGE.y, FRIDGE.width, FRIDGE.height, 0xcfe6ef)
+      .setDepth(Depth.Table);
+    this.add
+      .text(FRIDGE.x, FRIDGE.y, "FRIGO", { ...TEXT_STYLE, fontSize: "11px", fontStyle: "bold" })
+      .setOrigin(0.5)
+      .setAngle(-90)
+      .setAlpha(0.6)
+      .setDepth(Depth.Table);
 
     // No key capture: otherwise Phaser swallows these keys and they can't be typed into React inputs.
     this.keys = this.input.keyboard!.addKeys({
@@ -107,6 +123,7 @@ export class KitchenScene extends Phaser.Scene {
           if (!sprite) return;
           sprite.target = { x: player.x, y: player.y };
           sprite.label.setText(this.labelFor(sessionId, player));
+          sprite.held.setText(this.heldIcon(player));
         }));
         unsubscribe.push(callbacks.listen(player, "action", (action) => {
           if (action) this.actionStartedAt.set(sessionId, this.time.now);
@@ -150,10 +167,11 @@ export class KitchenScene extends Phaser.Scene {
     this.sendInput();
 
     const t = 1 - Math.pow(1 - SMOOTHING, delta / (1000 / 60));
-    for (const { body, label, target } of this.sprites.values()) {
+    for (const { body, label, held, target } of this.sprites.values()) {
       body.x = Phaser.Math.Linear(body.x, target.x, t);
       body.y = Phaser.Math.Linear(body.y, target.y, t);
       label.setPosition(body.x, body.y - PLAYER_SIZE / 2 - 6);
+      held.setPosition(body.x + PLAYER_SIZE / 2 - 4, body.y + PLAYER_SIZE / 2 - 4);
     }
     for (const { body, icon, target } of this.customers.values()) {
       body.x = Phaser.Math.Linear(body.x, target.x, t);
@@ -178,8 +196,13 @@ export class KitchenScene extends Phaser.Scene {
     if (document.activeElement instanceof HTMLInputElement || this.registry.get(MODAL_OPEN_KEY)) return;
     const interaction = this.currentInteraction();
     if (!interaction || interaction.kind === "blocked") return;
-    if (interaction.kind === "readTicket") this.game.events.emit(OPEN_TICKET_EVENT, interaction.ticketId);
+    if (interaction.kind === "readTicket") this.openPopup({ kind: "ticket", ticketId: interaction.ticketId });
+    else if (interaction.kind === "openFridge") this.openPopup({ kind: "fridge" });
     else this.room.send(Message.Interact);
+  }
+
+  private openPopup(popup: KitchenPopup) {
+    this.game.events.emit(OPEN_POPUP_EVENT, popup);
   }
 
   /** Outlines what the local waiter can act on and shows which key to press. */
@@ -195,6 +218,9 @@ export class KitchenScene extends Phaser.Scene {
       if (target?.kind === "customer" && target.id === id) body.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
       else body.setStrokeStyle();
     }
+    if (target?.kind === "fridge") this.fridge.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.fridge.setStrokeStyle(2, 0x9bbfcc);
+
     for (const [id, slip] of this.tickets) {
       if (target?.kind === "ticket" && target.id === id) slip.setStrokeStyle(3, 0xe8833a);
       else slip.setStrokeStyle(1, 0xb9a88f);
@@ -210,13 +236,16 @@ export class KitchenScene extends Phaser.Scene {
     }
   }
 
-  /** The thing to highlight for an interaction (a customer, a table or a ticket) and where its edges are. */
+  /** The thing to highlight for an interaction (a customer, a table, a ticket, the fridge) and where its edges are. */
   private interactionTarget(interaction: Interaction) {
     if (interaction.kind === "readTicket") {
       const slip = this.tickets.get(interaction.ticketId);
       if (!slip) return null;
       const half = TICKET_SLOT_SIZE / 2;
       return { kind: "ticket", id: interaction.ticketId, x: slip.x, top: slip.y - half, bottom: slip.y + half };
+    }
+    if (interaction.kind === "openFridge" || interaction.kind === "putBack") {
+      return { kind: "fridge", id: "", x: FRIDGE.x, top: FRIDGE.y - FRIDGE.height / 2, bottom: FRIDGE.y + FRIDGE.height / 2 };
     }
     if (interaction.kind === "seat" || interaction.kind === "action") {
       const table = this.room.state.tables.get(interaction.tableId);
@@ -290,8 +319,13 @@ export class KitchenScene extends Phaser.Scene {
       .text(player.x, player.y, this.labelFor(sessionId, player), { ...TEXT_STYLE, fontSize: "14px" })
       .setOrigin(0.5, 1)
       .setDepth(Depth.Label);
+    const held = this.add.text(0, 0, this.heldIcon(player), { fontSize: "20px" }).setOrigin(0.5).setDepth(Depth.Label);
 
-    this.sprites.set(sessionId, { body, label, target: { x: player.x, y: player.y } });
+    this.sprites.set(sessionId, { body, label, held, target: { x: player.x, y: player.y } });
+  }
+
+  private heldIcon(player: Player) {
+    return player.holding ? INGREDIENTS[player.holding].emoji : "";
   }
 
   private labelFor(sessionId: string, player: Player) {
@@ -302,6 +336,7 @@ export class KitchenScene extends Phaser.Scene {
     const sprite = this.sprites.get(sessionId);
     sprite?.body.destroy();
     sprite?.label.destroy();
+    sprite?.held.destroy();
     this.sprites.delete(sessionId);
     this.actionStartedAt.delete(sessionId);
   }

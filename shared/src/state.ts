@@ -2,7 +2,7 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 import type { Role } from "./index.ts";
 import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
-import type { MenuItemId } from "./menu.ts";
+import type { IngredientId, MenuItemId } from "./menu.ts";
 
 export const Player = schema({
   name: t.string(),
@@ -14,6 +14,8 @@ export const Player = schema({
   action: t.string<ActionId | "">().default(""),
   /** Id of the table the action is performed on. */
   actionTarget: t.string().default(""),
+  /** What the player is carrying (one thing at a time), or "" when their hands are empty. */
+  holding: t.string<IngredientId | "">().default(""),
 }, "Player");
 export type Player = SchemaType<typeof Player>;
 

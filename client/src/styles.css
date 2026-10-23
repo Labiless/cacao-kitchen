@@ -112,6 +112,7 @@ input {
 }
 .dialog { width: min(340px, 100%); }
 .dialog h2 { margin: 0; font-size: 20px; }
+.fridge-dialog { width: min(340px, 100%); }
 .dialog label { font-size: 14px; color: var(--muted); }
 
 button.secondary {

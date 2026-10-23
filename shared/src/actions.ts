@@ -1,10 +1,10 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
 // either an instant interaction (hooking, seating or showing out a customer, opening the order dialog,
-// reading a ticket) or a timed action, which completes after `durationMs` unless the player walks out of
+// reading a ticket, using the fridge) or a timed action, which completes after `durationMs` unless the player walks out of
 // reach first. A "blocked" interaction only explains why E does nothing right now.
 
 import { isNearCustomer, isNearEntrance, isNearTable, type TableStatus } from "./hall.ts";
-import { freeTicketSlot, nearestTicket } from "./kitchen.ts";
+import { freeTicketSlot, isNearFridge, nearestTicket } from "./kitchen.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState } from "./state.ts";
 
@@ -26,6 +26,9 @@ export type Interaction =
   | { kind: "farewell"; customerId: string }
   /** Client-only: opens the ticket popup. The server isn't involved until the ticket is thrown away. */
   | { kind: "readTicket"; ticketId: string }
+  /** Client-only: opens the fridge popup. The server is involved once an ingredient is picked. */
+  | { kind: "openFridge" }
+  | { kind: "putBack" }
   | { kind: "blocked"; customerId: string; reason: string }
   | { kind: "action"; action: ActionId; tableId: string };
 
@@ -37,6 +40,8 @@ export function interactionLabel(interaction: Interaction) {
     case "escort": return "Accompagna all'uscita";
     case "farewell": return "Saluta il cliente";
     case "readTicket": return "Leggi la comanda";
+    case "openFridge": return "Apri il frigo";
+    case "putBack": return "Rimetti in frigo";
     case "blocked": return interaction.reason;
     case "action": return ACTIONS[interaction.action].label;
   }
@@ -72,7 +77,9 @@ export function availableInteraction(
 
   if (player.role === "kitchen") {
     const ticket = nearestTicket(state, at);
-    return ticket ? { kind: "readTicket", ticketId: ticket.id } : null;
+    if (ticket) return { kind: "readTicket", ticketId: ticket.id };
+    if (isNearFridge(at)) return player.holding ? { kind: "putBack" } : { kind: "openFridge" };
+    return null;
   }
 
   if (attendedCustomer(state, sessionId, "ordering")) return null;

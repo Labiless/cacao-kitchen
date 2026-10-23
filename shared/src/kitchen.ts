@@ -15,9 +15,38 @@ export const TICKET_SLOTS = Array.from({ length: MAX_TICKETS }, (_, i) => ({
   y: TICKET_SLOT_SIZE / 2 + 2,
 }));
 
+/** Against the left kitchen wall; the cook takes ingredients from it. */
+export const FRIDGE = { x: 30, y: 260, width: 52, height: 96 } as const;
+
 interface Point {
   x: number;
   y: number;
+}
+
+interface Box extends Point {
+  width: number;
+  height: number;
+}
+
+/** Whether a player centered at `p` would overlap the box. */
+function overlapsBox(p: Point, box: Box) {
+  return Math.abs(p.x - box.x) < (PLAYER_SIZE + box.width) / 2
+    && Math.abs(p.y - box.y) < (PLAYER_SIZE + box.height) / 2;
+}
+
+/** Whether a player centered at `p` is within INTERACT_DISTANCE of the box, edge to edge. */
+function isNearBox(p: Point, box: Box) {
+  return Math.abs(p.x - box.x) <= (PLAYER_SIZE + box.width) / 2 + INTERACT_DISTANCE
+    && Math.abs(p.y - box.y) <= (PLAYER_SIZE + box.height) / 2 + INTERACT_DISTANCE;
+}
+
+/** Whether a player centered at `p` would overlap any piece of kitchen furniture. */
+export function overlapsKitchenFurniture(p: Point) {
+  return overlapsBox(p, FRIDGE) || overlapsTicketSlots(p);
+}
+
+export function isNearFridge(p: Point) {
+  return isNearBox(p, FRIDGE);
 }
 
 /** Whether a player centered at `p` would overlap any ticket slot. */
