@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { attendedCustomer, type MenuItemId } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
 import { createGame } from "../game/createGame.ts";
 import { NameDialog } from "./NameDialog.tsx";
+import { OrderDialog } from "./OrderDialog.tsx";
 
 interface Props {
   room: KitchenRoom;
@@ -14,6 +16,7 @@ interface Props {
 export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
+  const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
 
   // Phaser owns the canvas; React only mounts/unmounts it.
   useEffect(() => {
@@ -25,6 +28,19 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
     room.onLeave(onLeave);
     return () => room.onLeave.remove(onLeave);
   }, [room, onLeave]);
+
+  // Open the order dialog while this player is taking someone's order.
+  useEffect(() => {
+    const sync = () => {
+      const customer = attendedCustomer(room.state, room.sessionId, "ordering");
+      setOrdering((current) => {
+        if (current?.customerId === customer?.id) return current;
+        return customer ? { customerId: customer.id, wants: customer.wants } : null;
+      });
+    };
+    room.onStateChange(sync);
+    return () => room.onStateChange.remove(sync);
+  }, [room]);
 
   useEffect(() => {
     if (!copied) return;
@@ -49,6 +65,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
         {copied === "ok" ? "Link copiato!" : copied === "error" ? "Copia non riuscita" : room.roomId}
       </button>
 
+      {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
     </div>
   );

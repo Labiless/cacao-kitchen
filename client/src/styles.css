@@ -113,3 +113,45 @@ input {
 .dialog { width: min(340px, 100%); }
 .dialog h2 { margin: 0; font-size: 20px; }
 .dialog label { font-size: 14px; color: var(--muted); }
+
+button.secondary {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.order-dialog { width: min(380px, 100%); }
+.speech {
+  position: relative;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: white;
+  border: 2px solid var(--line);
+  font-size: 18px;
+  font-style: italic;
+}
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  color: var(--ink);
+  border: 2px solid var(--line);
+  text-align: left;
+}
+.menu-item.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, white);
+}
+.menu-emoji { font-size: 22px; }
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

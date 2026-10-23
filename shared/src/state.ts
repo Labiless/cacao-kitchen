@@ -2,6 +2,7 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 import type { Role } from "./index.ts";
 import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
+import type { MenuItemId } from "./menu.ts";
 
 export const Player = schema({
   name: t.string(),
@@ -29,18 +30,31 @@ export const Customer = schema({
   x: t.number(),
   y: t.number(),
   status: t.string<CustomerStatus>(),
-  /** 1 = just arrived, 0 = out of patience. Only drains while waiting at the entrance. */
+  /** 1 = full, 0 = out of patience. See CUSTOMER_TIMING.patienceS for when it drains. */
   patience: t.number(),
-  /** sessionId of the waiter leading them, while following. */
-  leaderId: t.string().default(""),
-  /** Table they sit at, while seated. */
+  /** sessionId of the waiter leading them (following) or taking their order (ordering). */
+  waiterId: t.string().default(""),
+  /** Table they sit at, once seated. */
   tableId: t.string().default(""),
+  /** What they're going to ask for. */
+  wants: t.string<MenuItemId>(),
 }, "Customer");
 export type Customer = SchemaType<typeof Customer>;
+
+/** An order sent by the waiter; what the kitchen will cook. */
+export const Order = schema({
+  id: t.string(),
+  customerId: t.string(),
+  tableId: t.string(),
+  /** What the waiter selected, which may not be what the customer asked for. */
+  item: t.string<MenuItemId>(),
+}, "Order");
+export type Order = SchemaType<typeof Order>;
 
 export const KitchenState = schema({
   players: t.map(Player),
   tables: t.map(Table),
   customers: t.map(Customer),
+  orders: t.map(Order),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;

@@ -31,10 +31,13 @@ export const CUSTOMER_SPEED = PLAYER_SPEED;
 export const FOLLOW_GAP = 6;
 
 export const CUSTOMER_TIMING = {
-  /** Seconds a customer waits at the entrance before leaving angry. */
-  patienceS: 20,
-  /** Temporary, until ordering exists: seconds a seated customer stays before leaving. */
-  seatedS: 8,
+  /**
+   * Seconds of patience in each status where the customer is waiting on the waiter.
+   * Patience refills on entering each of these and is paused in every other status.
+   */
+  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60 } as Partial<Record<CustomerStatus, number>>,
+  /** Seconds a seated customer spends reading the menu before they're ready to order. */
+  readingMenuS: 4,
   /** Seconds between a customer leaving and the next one arriving. */
   spawnDelayS: 4,
   /** Seconds a leaving customer stays visible, so players see how it went. */
@@ -42,12 +45,17 @@ export const CUSTOMER_TIMING = {
 } as const;
 
 /**
- * waiting   → at the entrance, patience running out
- * following → hooked by the waiter, walks behind them (patience paused)
- * seated    → at a table
- * leaving   → about to disappear; patience 0 means they left angry
+ * waiting      → at the entrance, patience running out
+ * following    → hooked by the waiter, walks behind them
+ * readingMenu  → just sat down at a table
+ * readyToOrder → wants to order, patience running out
+ * ordering     → the waiter is taking their order
+ * waitingFood  → order sent, patience running out
+ * leaving      → about to disappear; patience 0 means they left angry
  */
-export const CUSTOMER_STATUSES = ["waiting", "following", "seated", "leaving"] as const;
+export const CUSTOMER_STATUSES = [
+  "waiting", "following", "readingMenu", "readyToOrder", "ordering", "waitingFood", "leaving",
+] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
 
 interface Point {

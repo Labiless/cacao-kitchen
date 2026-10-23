@@ -9,7 +9,9 @@ import {
   FOLLOW_GAP,
   KitchenState,
   MAX_PLAYERS,
+  MENU_ITEMS,
   Message,
+  Order,
   PLAYER_SIZE,
   PLAYER_SPEED,
   Player,
@@ -18,8 +20,11 @@ import {
   TABLE_LAYOUT,
   Table,
   WORLD,
+  attendedCustomer,
   availableInteraction,
+  canReachCustomer,
   cleanName,
+  isMenuItem,
   isNearTable,
   isRole,
   overlapsTable,
@@ -27,7 +32,9 @@ import {
   tableActionFor,
   zoneFor,
   type InputState,
+  type CustomerStatus,
   type JoinOptions,
+  type PlaceOrderMessage,
   type Role,
 } from "@cacao/shared";
 
@@ -45,10 +52,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private heldKeys = new Map<string, InputState>();
   /** When each player's current action completes. */
   private actionEndsAt = new Map<string, number>();
-  /** When each seated customer gets up and leaves. */
-  private customerLeavesAt = new Map<string, number>();
+  /** When each customer reading the menu becomes ready to order. */
+  private readyToOrderAt = new Map<string, number>();
   private nextCustomerAt = 0;
   private customerCount = 0;
+  private orderCount = 0;
 
   onCreate() {
     this.nextCustomerAt = this.clock.currentTime + FIRST_CUSTOMER_DELAY_MS;
@@ -79,6 +87,26 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     });
 
     this.onMessage(Message.Interact, (client) => this.interact(client.sessionId));
+
+    this.onMessage(Message.PlaceOrder, (client, message: PlaceOrderMessage) => {
+      const customer = attendedCustomer(this.state, client.sessionId, "ordering");
+      if (!customer || !isMenuItem(message?.item)) return;
+
+      const order = new Order();
+      order.id = `o${++this.orderCount}`;
+      order.customerId = customer.id;
+      order.tableId = customer.tableId;
+      order.item = message.item;
+      this.state.orders.set(order.id, order);
+
+      customer.waiterId = "";
+      this.setCustomerStatus(customer, "waitingFood");
+    });
+
+    this.onMessage(Message.CancelOrder, (client) => {
+      const customer = attendedCustomer(this.state, client.sessionId, "ordering");
+      if (customer) this.stopOrdering(customer);
+    });
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
   }
@@ -122,21 +150,27 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     switch (interaction.kind) {
       case "lead": {
         const customer = this.state.customers.get(interaction.customerId)!;
-        customer.status = "following";
-        customer.leaderId = sessionId;
+        customer.waiterId = sessionId;
+        this.setCustomerStatus(customer, "following");
+        break;
+      }
+      case "takeOrder": {
+        const customer = this.state.customers.get(interaction.customerId)!;
+        customer.waiterId = sessionId;
+        this.setCustomerStatus(customer, "ordering");
         break;
       }
       case "seat": {
         const customer = this.state.customers.get(interaction.customerId)!;
         const table = this.state.tables.get(interaction.tableId)!;
         const seat = seatPosition(table);
-        customer.status = "seated";
-        customer.leaderId = "";
+        customer.waiterId = "";
         customer.tableId = table.id;
         customer.x = seat.x;
         customer.y = seat.y;
         table.status = "occupied";
-        this.customerLeavesAt.set(customer.id, this.clock.currentTime + CUSTOMER_TIMING.seatedS * 1000);
+        this.setCustomerStatus(customer, "readingMenu");
+        this.readyToOrderAt.set(customer.id, this.clock.currentTime + CUSTOMER_TIMING.readingMenuS * 1000);
         break;
       }
       case "action":
@@ -216,33 +250,55 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     }
 
     this.state.customers.forEach((customer) => {
-      switch (customer.status) {
-        case "waiting":
-          customer.patience = Math.max(0, customer.patience - dt / CUSTOMER_TIMING.patienceS);
-          if (customer.patience === 0) this.sendAway(customer);
-          break;
+      const patienceS = CUSTOMER_TIMING.patienceS[customer.status];
+      if (patienceS) {
+        customer.patience = Math.max(0, customer.patience - dt / patienceS);
+        if (customer.patience === 0) {
+          this.sendAway(customer);
+          return;
+        }
+      }
 
+      switch (customer.status) {
         case "following": {
-          const leader = this.state.players.get(customer.leaderId);
+          const leader = this.state.players.get(customer.waiterId);
           if (leader) {
             this.follow(customer, leader, dt);
           } else {
             // Their waiter left the room: they stop and wait where they are.
-            customer.status = "waiting";
-            customer.leaderId = "";
+            customer.waiterId = "";
+            this.setCustomerStatus(customer, "waiting");
           }
           break;
         }
 
-        case "seated":
-          if (now >= (this.customerLeavesAt.get(customer.id) ?? 0)) {
-            const table = this.state.tables.get(customer.tableId);
-            if (table) table.status = "dirty";
-            this.sendAway(customer);
+        case "readingMenu":
+          if (now >= (this.readyToOrderAt.get(customer.id) ?? 0)) {
+            this.readyToOrderAt.delete(customer.id);
+            this.setCustomerStatus(customer, "readyToOrder");
           }
           break;
+
+        case "ordering": {
+          // The dialog was abandoned: the waiter left the room or walked off.
+          const waiter = this.state.players.get(customer.waiterId);
+          if (!waiter || !canReachCustomer(this.state, waiter, customer)) this.stopOrdering(customer);
+          break;
+        }
       }
     });
+  }
+
+  /** Changes status, refilling patience when entering a status where it drains. */
+  private setCustomerStatus(customer: Customer, status: CustomerStatus) {
+    customer.status = status;
+    if (CUSTOMER_TIMING.patienceS[status]) customer.patience = 1;
+  }
+
+  /** Back to waiting for the waiter, keeping the patience they had left. */
+  private stopOrdering(customer: Customer) {
+    customer.status = "readyToOrder";
+    customer.waiterId = "";
   }
 
   private spawnCustomer() {
@@ -250,8 +306,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     customer.id = `c${++this.customerCount}`;
     customer.x = ENTRANCE.x;
     customer.y = ENTRANCE.y;
-    customer.status = "waiting";
-    customer.patience = 1;
+    customer.wants = MENU_ITEMS[Math.floor(Math.random() * MENU_ITEMS.length)];
+    this.setCustomerStatus(customer, "waiting");
     this.state.customers.set(customer.id, customer);
   }
 
@@ -268,13 +324,21 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     customer.y += (dy / distance) * step;
   }
 
-  /** Marks the customer as leaving, then removes them and schedules the next one. */
+  /** Marks the customer as leaving, then removes them (and their order) and schedules the next one. */
   private sendAway(customer: Customer) {
     customer.status = "leaving";
-    customer.leaderId = "";
-    this.customerLeavesAt.delete(customer.id);
+    customer.waiterId = "";
+    this.readyToOrderAt.delete(customer.id);
+
+    // A table they sat at needs cleaning.
+    const table = this.state.tables.get(customer.tableId);
+    if (table) table.status = "dirty";
+
     this.clock.setTimeout(() => {
       this.state.customers.delete(customer.id);
+      this.state.orders.forEach((order, id) => {
+        if (order.customerId === customer.id) this.state.orders.delete(id);
+      });
       this.nextCustomerAt = this.clock.currentTime + CUSTOMER_TIMING.spawnDelayS * 1000;
     }, CUSTOMER_TIMING.leavingS * 1000);
   }

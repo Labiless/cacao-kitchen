@@ -4,7 +4,9 @@ import {
   ACTIONS,
   CUSTOMER_COLOR,
   CUSTOMER_SIZE,
+  CUSTOMER_TIMING,
   ENTRANCE,
+  MENU,
   Message,
   PLAYER_SIZE,
   ROLE_INFO,
@@ -12,9 +14,11 @@ import {
   TABLE_STATUS_INFO,
   WALL,
   WORLD,
+  attendedCustomer,
   availableInteraction,
   interactionLabel,
   type Customer,
+  type CustomerStatus,
   type InputState,
   type Interaction,
   type Player,
@@ -31,6 +35,8 @@ interface PlayerSprite {
 
 interface CustomerSprite {
   body: Phaser.GameObjects.Arc;
+  /** Shows what the customer is up to, e.g. a raised hand when ready to order. */
+  icon: Phaser.GameObjects.Text;
   target: { x: number; y: number };
 }
 
@@ -45,6 +51,8 @@ const Depth = { Table: 1, Player: 2, Label: 3 } as const;
 const TEXT_STYLE = { fontFamily: "system-ui, sans-serif", color: "#3b2a1e" } as const;
 const HIGHLIGHT = { width: 4, color: 0xfff3c4 } as const;
 
+const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
+
 /** Fraction of the remaining distance covered per frame at 60 fps. */
 const SMOOTHING = 0.3;
 
@@ -57,7 +65,7 @@ export class KitchenScene extends Phaser.Scene {
   private bars!: Phaser.GameObjects.Graphics;
   private hint!: Phaser.GameObjects.Text;
   private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
-  private lastInput: InputState = { left: false, right: false, up: false, down: false };
+  private lastInput: InputState = NO_INPUT;
 
   constructor(private room: KitchenRoom) {
     super("kitchen");
@@ -109,8 +117,9 @@ export class KitchenScene extends Phaser.Scene {
           const sprite = this.customers.get(id);
           if (sprite) sprite.target = { x: customer.x, y: customer.y };
         }));
-        unsubscribe.push(callbacks.listen(customer, "status", (status, previous) => {
-          if (status === "leaving") this.showCustomerLeaving(id, previous === "seated");
+        unsubscribe.push(callbacks.listen(customer, "status", (status) => {
+          this.refreshCustomerIcon(id, customer);
+          if (status === "leaving") this.showCustomerLeaving(id, customer.patience > 0);
         }));
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
@@ -127,9 +136,10 @@ export class KitchenScene extends Phaser.Scene {
       body.y = Phaser.Math.Linear(body.y, target.y, t);
       label.setPosition(body.x, body.y - PLAYER_SIZE / 2 - 6);
     }
-    for (const { body, target } of this.customers.values()) {
+    for (const { body, icon, target } of this.customers.values()) {
       body.x = Phaser.Math.Linear(body.x, target.x, t);
       body.y = Phaser.Math.Linear(body.y, target.y, t);
+      icon.setPosition(body.x + CUSTOMER_SIZE / 2 + 2, body.y - CUSTOMER_SIZE / 2);
     }
 
     this.bars.clear();
@@ -170,11 +180,11 @@ export class KitchenScene extends Phaser.Scene {
     }
   }
 
-  /** The thing to highlight for an interaction: the customer to hook, or the table to use. */
+  /** The thing to highlight for an interaction: the customer to hook or serve, or the table to use. */
   private interactionTarget(interaction: Interaction) {
-    if (interaction.kind === "lead") {
+    if (interaction.kind === "lead" || interaction.kind === "takeOrder") {
       const sprite = this.customers.get(interaction.customerId);
-      return sprite && { kind: "customer", id: interaction.customerId, x: sprite.body.x, top: sprite.body.y - CUSTOMER_SIZE / 2 - 10 };
+      return sprite && { kind: "customer", id: interaction.customerId, x: sprite.body.x, top: sprite.body.y - CUSTOMER_SIZE / 2 - 12 };
     }
     const table = this.room.state.tables.get(interaction.tableId);
     return table && { kind: "table", id: interaction.tableId, x: table.x, top: table.y - TABLE_SIZE / 2 };
@@ -192,14 +202,14 @@ export class KitchenScene extends Phaser.Scene {
     }
   }
 
-  /** Patience bar under every customer still waiting for the waiter. */
+  /** Patience bar above every customer whose patience is draining. */
   private drawPatience() {
     for (const [id, { body }] of this.customers) {
       const customer = this.room.state.customers.get(id);
-      if (customer?.status !== "waiting" && customer?.status !== "following") continue;
+      if (!customer || !CUSTOMER_TIMING.patienceS[customer.status]) continue;
 
       const color = customer.patience > 0.5 ? 0x7bd389 : customer.patience > 0.25 ? 0xf2c14e : 0xe05a47;
-      this.drawBar(body.x, body.y + CUSTOMER_SIZE / 2 + 6, CUSTOMER_SIZE + 6, customer.patience, color);
+      this.drawBar(body.x, body.y - CUSTOMER_SIZE / 2 - 8, CUSTOMER_SIZE + 6, customer.patience, color);
     }
   }
 
@@ -211,8 +221,10 @@ export class KitchenScene extends Phaser.Scene {
 
   private sendInput() {
     const k = this.keys;
-    const typing = document.activeElement instanceof HTMLInputElement;
-    const input: InputState = typing ? { left: false, right: false, up: false, down: false } : {
+    // Stand still while typing in a React input or while the order dialog is open.
+    const busy = document.activeElement instanceof HTMLInputElement
+      || !!attendedCustomer(this.room.state, this.room.sessionId, "ordering");
+    const input: InputState = busy ? NO_INPUT : {
       left: k.left.isDown || k.a.isDown,
       right: k.right.isDown || k.d.isDown,
       up: k.up.isDown || k.w.isDown,
@@ -255,7 +267,19 @@ export class KitchenScene extends Phaser.Scene {
   private addCustomer(id: string, customer: Customer) {
     const color = Phaser.Display.Color.HexStringToColor(CUSTOMER_COLOR).color;
     const body = this.add.circle(customer.x, customer.y, CUSTOMER_SIZE / 2, color).setDepth(Depth.Player);
-    this.customers.set(id, { body, target: { x: customer.x, y: customer.y } });
+    const icon = this.add.text(0, 0, "", { fontSize: "18px" }).setOrigin(0, 1).setDepth(Depth.Label);
+    this.customers.set(id, { body, icon, target: { x: customer.x, y: customer.y } });
+    this.refreshCustomerIcon(id, customer);
+  }
+
+  private refreshCustomerIcon(id: string, customer: Customer) {
+    const icons: Partial<Record<CustomerStatus, string>> = {
+      readingMenu: "📖",
+      readyToOrder: "✋",
+      ordering: "📝",
+      waitingFood: MENU[customer.wants]?.emoji,
+    };
+    this.customers.get(id)?.icon.setText(icons[customer.status] ?? "");
   }
 
   /** Fades the customer out with a face showing how it went. */
@@ -268,11 +292,12 @@ export class KitchenScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(Depth.Label);
     this.tweens.add({ targets: face, y: face.y - 30, alpha: 0, duration: 1200, onComplete: () => face.destroy() });
-    this.tweens.add({ targets: sprite.body, alpha: 0, duration: 1000 });
+    this.tweens.add({ targets: [sprite.body, sprite.icon], alpha: 0, duration: 1000 });
   }
 
   private removeCustomer(id: string) {
     this.customers.get(id)?.body.destroy();
+    this.customers.get(id)?.icon.destroy();
     this.customers.delete(id);
   }
 

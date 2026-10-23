@@ -1,9 +1,10 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
-// either an instant interaction (hooking or seating a customer) or a timed action, which
-// completes after `durationMs` unless the player walks out of reach first.
+// either an instant interaction (hooking or seating a customer, opening the order dialog)
+// or a timed action, which completes after `durationMs` unless the player walks out of reach first.
 
 import { isNearCustomer, isNearTable, type TableStatus } from "./hall.ts";
-import type { KitchenState } from "./state.ts";
+import type { CustomerStatus } from "./hall.ts";
+import type { Customer, KitchenState } from "./state.ts";
 
 export const ACTIONS = {
   cleanTable: { label: "Pulisci tavolo", durationMs: 2500 },
@@ -18,22 +19,30 @@ export function tableActionFor(status: TableStatus): ActionId | null {
 export type Interaction =
   | { kind: "lead"; customerId: string }
   | { kind: "seat"; customerId: string; tableId: string }
+  | { kind: "takeOrder"; customerId: string }
   | { kind: "action"; action: ActionId; tableId: string };
 
 export function interactionLabel(interaction: Interaction) {
   switch (interaction.kind) {
     case "lead": return "Accompagna al tavolo";
     case "seat": return "Fai sedere";
+    case "takeOrder": return "Prendi l'ordinazione";
     case "action": return ACTIONS[interaction.action].label;
   }
 }
 
-/** The customer currently following this player, if any. */
-export function ledCustomer(state: KitchenState, sessionId: string) {
+/** The customer this waiter is attending in the given status (leading, taking the order of), if any. */
+export function attendedCustomer(state: KitchenState, sessionId: string, status: CustomerStatus) {
   for (const customer of state.customers.values()) {
-    if (customer.status === "following" && customer.leaderId === sessionId) return customer;
+    if (customer.status === status && customer.waiterId === sessionId) return customer;
   }
   return null;
+}
+
+/** Whether a player at `at` can interact with the customer: a seated customer is reachable from anywhere around their table. */
+export function canReachCustomer(state: KitchenState, at: { x: number; y: number }, customer: Customer) {
+  const table = state.tables.get(customer.tableId);
+  return table ? isNearTable(at, table) : isNearCustomer(at, customer);
 }
 
 /**
@@ -48,9 +57,10 @@ export function availableInteraction(
 ): Interaction | null {
   const player = state.players.get(sessionId);
   if (!player || player.role !== "hall" || player.action) return null;
+  if (attendedCustomer(state, sessionId, "ordering")) return null;
   const at = position ?? player;
 
-  const led = ledCustomer(state, sessionId);
+  const led = attendedCustomer(state, sessionId, "following");
   if (led) {
     for (const table of state.tables.values()) {
       if (table.status === "free" && isNearTable(at, table)) {
@@ -59,9 +69,9 @@ export function availableInteraction(
     }
   } else {
     for (const customer of state.customers.values()) {
-      if (customer.status === "waiting" && isNearCustomer(at, customer)) {
-        return { kind: "lead", customerId: customer.id };
-      }
+      if (!canReachCustomer(state, at, customer)) continue;
+      if (customer.status === "waiting") return { kind: "lead", customerId: customer.id };
+      if (customer.status === "readyToOrder") return { kind: "takeOrder", customerId: customer.id };
     }
   }
 

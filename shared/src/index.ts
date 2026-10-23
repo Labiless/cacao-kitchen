@@ -1,8 +1,9 @@
 // Values that both the server and the client must agree on.
 // The synced room state (Colyseus Schema) lives in ./state.ts, the dining hall layout and customers
-// in ./hall.ts, what a player can do (timed actions, E interactions) in ./actions.ts.
+// in ./hall.ts, what a player can do (timed actions, E interactions) in ./actions.ts, the menu in ./menu.ts.
 
 import { PLAYER_SIZE, WORLD } from "./world.ts";
+import type { MenuItemId } from "./menu.ts";
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
@@ -38,7 +39,15 @@ export const Message = {
   SetName: "setName",
   /** No payload: the server works out what pressing E does (see availableInteraction). */
   Interact: "interact",
+  /** Payload: PlaceOrderMessage. Sent from the order dialog. */
+  PlaceOrder: "placeOrder",
+  /** No payload. Closes the order dialog without ordering. */
+  CancelOrder: "cancelOrder",
 } as const;
+
+export interface PlaceOrderMessage {
+  item: MenuItemId;
+}
 
 /** Keys currently held by a player; sent to the server whenever it changes. */
 export interface InputState {
@@ -64,3 +73,4 @@ export * from "./world.ts";
 export * from "./state.ts";
 export * from "./hall.ts";
 export * from "./actions.ts";
+export * from "./menu.ts";
