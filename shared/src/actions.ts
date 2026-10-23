@@ -1,12 +1,12 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
 // either an instant interaction (hooking or seating a customer, opening the order dialog, reading a ticket,
-// using the fridge, stove or pass, serving) or a timed action (cleaning a table, taking payment), which
+// using the fridge, stove, pass or phone, serving) or a timed action (cleaning a table, taking payment), which
 // completes after `durationMs` unless the player walks out of reach first.
 // A "blocked" interaction only explains why E does nothing right now.
 
-import { isAtQueueSpot, isNearCustomer, isNearRegister, isNearTable, type TableStatus } from "./hall.ts";
+import { isAtQueueSpot, isNearCustomer, isNearPhone, isNearRegister, isNearTable, type TableStatus } from "./hall.ts";
 import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, isNearStove, nearestTicket } from "./kitchen.ts";
-import { MENU, formatMoney, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
+import { MENU, MENU_ITEMS, formatMoney, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState } from "./state.ts";
 
@@ -32,6 +32,8 @@ export type Interaction =
   /** Client-only: opens the fridge popup. The server is involved once an ingredient is picked. */
   | { kind: "openFridge" }
   | { kind: "putBack" }
+  /** Client-only: opens the phone popup. The server is involved once something is bought. */
+  | { kind: "openPhone" }
   /** Client-only: opens the stove popup. The server is involved once a dish is picked. */
   | { kind: "openStove" }
   | { kind: "takeDish"; dish: MenuItemId }
@@ -53,6 +55,7 @@ export function interactionLabel(interaction: Interaction) {
     case "openFridge": return "Apri il frigo";
     case "putBack": return "Rimetti in frigo";
     case "openStove": return "Usa il fornello";
+    case "openPhone": return "Usa il telefono";
     case "takeDish": return `Prendi ${MENU[interaction.dish].label}`;
     case "placeOnPass": return "Posa sul bancone";
     case "takeFromPass": return `Prendi ${MENU[interaction.dish].label}`;
@@ -77,6 +80,11 @@ export function attendedCustomer(state: KitchenState, sessionId: string, status:
 export function canReachCustomer(state: KitchenState, at: { x: number; y: number }, customer: Customer) {
   const table = state.tables.get(customer.tableId);
   return table ? isNearTable(at, table) : isNearCustomer(at, customer);
+}
+
+/** The restaurant's menu: the items whose recipe has been unlocked, in menu order. */
+export function unlockedMenu(state: KitchenState): MenuItemId[] {
+  return MENU_ITEMS.filter((id) => state.unlockedRecipes.includes(id));
 }
 
 /** The customer at the front of the queue at the till, once they've reached the till. */
@@ -165,6 +173,7 @@ export function availableInteraction(
       const interaction = passInteraction(state, player.holding);
       if (interaction) return interaction;
     }
+    if (isNearPhone(at)) return { kind: "openPhone" };
     const payer = customerReadyToPay(state);
     if (payer && isNearRegister(at)) {
       return { kind: "action", action: "checkout", targetId: payer.id, amountCents: payer.bill };

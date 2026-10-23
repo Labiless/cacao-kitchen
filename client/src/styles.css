@@ -126,6 +126,20 @@ input {
 .dialog { width: min(340px, 100%); }
 .dialog h2 { margin: 0; font-size: 20px; }
 .fridge-dialog, .stove-dialog { width: min(340px, 100%); }
+.phone-dialog { width: min(380px, 100%); }
+.shop-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.shop-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: white;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+}
+.shop-item { flex: 1; font-weight: 600; }
+.shop-list button { min-width: 84px; font-variant-numeric: tabular-nums; }
+.menu-item:disabled { opacity: 0.5; cursor: default; }
 .recipe { display: block; font-weight: 400; color: var(--muted); }
 .dialog label { font-size: 14px; color: var(--muted); }
 

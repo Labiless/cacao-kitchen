@@ -1,10 +1,17 @@
 // Dining hall layout, customers and geometry, shared so client and server agree on where things are.
 
-import { PLAYER_SIZE, PLAYER_SPEED, WORLD } from "./world.ts";
+import {
+  INTERACT_DISTANCE,
+  PLAYER_SIZE,
+  PLAYER_SPEED,
+  WALL,
+  WORLD,
+  isNearBox,
+  overlapsBox,
+  type Point,
+} from "./world.ts";
 
 export const TABLE_SIZE = 60;
-/** Max gap (px) between a player's edge and a target's edge to interact with it. */
-export const INTERACT_DISTANCE = 24;
 
 export const TABLE_STATUSES = ["free", "occupied", "dirty"] as const;
 export type TableStatus = (typeof TABLE_STATUSES)[number];
@@ -34,6 +41,9 @@ export function entranceSpot(index: number) {
 
 /** Till by the exit, across the hall from the entrance: customers queue here to pay before leaving. */
 export const REGISTER = { x: WORLD.width - 50, y: 30, width: 80, height: 40 } as const;
+
+/** On the hall side of the middle wall: the waiter orders ingredients here. */
+export const PHONE = { x: WALL.x + WALL.thickness / 2 + 14, y: 110, width: 28, height: 28 } as const;
 
 /** Most customers in the restaurant at once; also the length of the queue at the till. */
 export const MAX_CUSTOMERS = 4;
@@ -83,11 +93,6 @@ export const CUSTOMER_STATUSES = [
 ] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
 
-interface Point {
-  x: number;
-  y: number;
-}
-
 /** Whether two squares (center + side) overlap. */
 function overlaps(a: Point, aSize: number, b: Point, bSize: number) {
   const reach = (aSize + bSize) / 2;
@@ -115,16 +120,18 @@ export function isNearCustomer(p: Point, customer: Point) {
   return withinReach(p, PLAYER_SIZE, customer, CUSTOMER_SIZE);
 }
 
-/** Whether a player centered at `p` would overlap the till. */
-export function overlapsRegister(p: Point) {
-  return Math.abs(p.x - REGISTER.x) < (PLAYER_SIZE + REGISTER.width) / 2
-    && Math.abs(p.y - REGISTER.y) < (PLAYER_SIZE + REGISTER.height) / 2;
+/** Whether a player centered at `p` would overlap any hall furniture other than tables (the till, the phone). */
+export function overlapsHallFurniture(p: Point) {
+  return overlapsBox(p, REGISTER) || overlapsBox(p, PHONE);
 }
 
 /** Whether a player centered at `p` is close enough to work the till. */
 export function isNearRegister(p: Point) {
-  return Math.abs(p.x - REGISTER.x) <= (PLAYER_SIZE + REGISTER.width) / 2 + INTERACT_DISTANCE
-    && Math.abs(p.y - REGISTER.y) <= (PLAYER_SIZE + REGISTER.height) / 2 + INTERACT_DISTANCE;
+  return isNearBox(p, REGISTER);
+}
+
+export function isNearPhone(p: Point) {
+  return isNearBox(p, PHONE);
 }
 
 /** Whether a customer has reached their queue spot (they walk there on their own). */

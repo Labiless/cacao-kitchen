@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import {
   INGREDIENTS,
   MENU,
-  MENU_ITEMS,
   Message,
   RECIPES,
   type CookMessage,
+  unlockedMenu,
   type MenuItemId,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
@@ -42,7 +42,7 @@ export function StoveDialog({ room, onClose }: Props) {
         <h2>Fornello</h2>
         <small className="hint">Cosa vuoi cucinare?</small>
         <div className="menu-grid">
-          {MENU_ITEMS.map((id) => {
+          {unlockedMenu(room.state).map((id) => {
             const recipe = RECIPES[id];
             return (
               <button

@@ -1,7 +1,6 @@
 // Kitchen layout, shared so client and server agree on where things are.
 
-import { PLAYER_SIZE, WALL } from "./world.ts";
-import { INTERACT_DISTANCE } from "./hall.ts";
+import { INTERACT_DISTANCE, PLAYER_SIZE, WALL, isNearBox, overlapsBox, type Point } from "./world.ts";
 import type { KitchenState } from "./state.ts";
 
 /** How many tickets fit on the kitchen wall. When it's full, the waiter can't take new orders. */
@@ -28,28 +27,6 @@ export const PASS_CAPACITY = 3;
 
 export const STOVE_STATUSES = ["idle", "cooking", "ready"] as const;
 export type StoveStatus = (typeof STOVE_STATUSES)[number];
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface Box extends Point {
-  width: number;
-  height: number;
-}
-
-/** Whether a player centered at `p` would overlap the box. */
-function overlapsBox(p: Point, box: Box) {
-  return Math.abs(p.x - box.x) < (PLAYER_SIZE + box.width) / 2
-    && Math.abs(p.y - box.y) < (PLAYER_SIZE + box.height) / 2;
-}
-
-/** Whether a player centered at `p` is within INTERACT_DISTANCE of the box, edge to edge. */
-function isNearBox(p: Point, box: Box) {
-  return Math.abs(p.x - box.x) <= (PLAYER_SIZE + box.width) / 2 + INTERACT_DISTANCE
-    && Math.abs(p.y - box.y) <= (PLAYER_SIZE + box.height) / 2 + INTERACT_DISTANCE;
-}
 
 /** Whether a player centered at `p` would overlap any piece of kitchen furniture (the pass included). */
 export function overlapsKitchenFurniture(p: Point) {

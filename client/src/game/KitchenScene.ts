@@ -10,6 +10,7 @@ import {
   MENU,
   PASS,
   PASS_CAPACITY,
+  PHONE,
   QUEUE_SPOTS,
   RECIPES,
   REGISTER,
@@ -68,8 +69,8 @@ const HIGHLIGHT = { width: 4, color: 0xfff3c4 } as const;
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
 /** A popup that only exists in React, opened from the scene. */
-export type KitchenPopup = { kind: "ticket"; ticketId: string } | { kind: "fridge" } | { kind: "stove" };
-/** Game event asking React to open a popup; the payload is a KitchenPopup. */
+export type ScenePopup = { kind: "ticket"; ticketId: string } | { kind: "fridge" } | { kind: "stove" } | { kind: "phone" };
+/** Game event asking React to open a popup; the payload is a ScenePopup. */
 export const OPEN_POPUP_EVENT = "openPopup";
 /** Registry key React sets while one of its popups is open, so the scene ignores movement and E. */
 export const MODAL_OPEN_KEY = "modalOpen";
@@ -91,6 +92,7 @@ export class KitchenScene extends Phaser.Scene {
   private stoveStartedAt = 0;
   private pass!: Phaser.GameObjects.Rectangle;
   private register!: Phaser.GameObjects.Rectangle;
+  private phone!: Phaser.GameObjects.Rectangle;
   /** One icon per spot on the pass. */
   private passDishes: Phaser.GameObjects.Text[] = [];
   /** What the pass icons currently show, to redraw only when it changes. */
@@ -128,6 +130,11 @@ export class KitchenScene extends Phaser.Scene {
       .text(REGISTER.x, REGISTER.y, "CASSA", { ...TEXT_STYLE, fontSize: "12px", fontStyle: "bold", color: "#f6efe4" })
       .setOrigin(0.5)
       .setDepth(Depth.Table);
+
+    this.phone = this.add
+      .rectangle(PHONE.x, PHONE.y, PHONE.width, PHONE.height, 0x2f3b45)
+      .setDepth(Depth.Table);
+    this.add.text(PHONE.x, PHONE.y, "📞", { fontSize: "16px" }).setOrigin(0.5).setDepth(Depth.Table);
 
     // The pass cuts through the wall, so it's drawn on top of it.
     this.pass = this.add.rectangle(PASS.x, PASS.y, PASS.width, PASS.height, 0xc89b6d).setDepth(Depth.Table);
@@ -253,10 +260,11 @@ export class KitchenScene extends Phaser.Scene {
     if (interaction.kind === "readTicket") this.openPopup({ kind: "ticket", ticketId: interaction.ticketId });
     else if (interaction.kind === "openFridge") this.openPopup({ kind: "fridge" });
     else if (interaction.kind === "openStove") this.openPopup({ kind: "stove" });
+    else if (interaction.kind === "openPhone") this.openPopup({ kind: "phone" });
     else this.room.send(Message.Interact);
   }
 
-  private openPopup(popup: KitchenPopup) {
+  private openPopup(popup: ScenePopup) {
     this.game.events.emit(OPEN_POPUP_EVENT, popup);
   }
 
@@ -281,6 +289,8 @@ export class KitchenScene extends Phaser.Scene {
     else this.pass.setStrokeStyle(2, 0x8a5a3b);
     if (target?.kind === "register") this.register.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.register.setStrokeStyle();
+    if (target?.kind === "phone") this.phone.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.phone.setStrokeStyle();
 
     for (const [id, slip] of this.tickets) {
       if (target?.kind === "ticket" && target.id === id) slip.setStrokeStyle(3, 0xe8833a);
@@ -319,6 +329,10 @@ export class KitchenScene extends Phaser.Scene {
       || (interaction.kind === "blocked" && interaction.station === "pass")
     ) {
       return { kind: "pass", id: "", x: PASS.x, top: PASS.y - PASS.height / 2, bottom: PASS.y + PASS.height / 2 };
+    }
+    if (interaction.kind === "openPhone") {
+      const half = PHONE.height / 2;
+      return { kind: "phone", id: "", x: PHONE.x, top: PHONE.y - half, bottom: PHONE.y + half };
     }
     if (interaction.kind === "action" && interaction.action === "checkout") {
       const half = REGISTER.height / 2;

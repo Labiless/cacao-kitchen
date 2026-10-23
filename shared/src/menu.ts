@@ -3,6 +3,9 @@
 
 export const MENU = {
   chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda", priceCents: 350 },
+  tea: { label: "Tè caldo", emoji: "🍵", spoken: "un tè caldo", priceCents: 250 },
+  pancakes: { label: "Pancake", emoji: "🥞", spoken: "dei pancake", priceCents: 400 },
+  egg: { label: "Uovo al tegamino", emoji: "🍳", spoken: "un uovo al tegamino", priceCents: 300 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];
@@ -11,8 +14,12 @@ export function isMenuItem(value: unknown): value is MenuItemId {
   return MENU_ITEMS.includes(value as MenuItemId);
 }
 
+/** Ingredients, and the pack they're bought in over the phone. */
 export const INGREDIENTS = {
-  cocoa: { label: "Cacao", emoji: "🍫" },
+  cocoa: { label: "Cacao", emoji: "🍫", pack: { units: 3, priceCents: 300 } },
+  teaLeaves: { label: "Foglie di tè", emoji: "🌿", pack: { units: 3, priceCents: 150 } },
+  batter: { label: "Pastella", emoji: "🥣", pack: { units: 3, priceCents: 300 } },
+  eggs: { label: "Uova", emoji: "🥚", pack: { units: 6, priceCents: 300 } },
 } as const;
 export type IngredientId = keyof typeof INGREDIENTS;
 export const INGREDIENT_IDS = Object.keys(INGREDIENTS) as IngredientId[];
@@ -21,10 +28,29 @@ export function isIngredient(value: unknown): value is IngredientId {
   return INGREDIENT_IDS.includes(value as IngredientId);
 }
 
+interface Recipe {
+  ingredient: IngredientId;
+  cookMs: number;
+  /**
+   * Price to unlock the recipe. Recipes without one (simple, single-ingredient ones) are known from
+   * the start; the others will have to be bought before customers can order them.
+   */
+  unlockPriceCents?: number;
+}
+
 /** How each menu item is cooked on the stove: which ingredient it takes and how long. */
-export const RECIPES: Record<MenuItemId, { ingredient: IngredientId; cookMs: number }> = {
+export const RECIPES: Record<MenuItemId, Recipe> = {
   chocolate: { ingredient: "cocoa", cookMs: 6000 },
+  tea: { ingredient: "teaLeaves", cookMs: 4000 },
+  pancakes: { ingredient: "batter", cookMs: 8000 },
+  egg: { ingredient: "eggs", cookMs: 5000 },
 };
+
+/** Recipes the restaurant knows from the start. */
+export const STARTING_RECIPES = MENU_ITEMS.filter((id) => RECIPES[id].unlockPriceCents === undefined);
+
+/** What the restaurant opens with: some cash and an empty fridge, so the first thing to do is order ingredients. */
+export const STARTING_MONEY_CENTS = 2000;
 
 /** Anything a player can carry: an ingredient or a cooked dish. */
 export type HeldItem = IngredientId | MenuItemId;

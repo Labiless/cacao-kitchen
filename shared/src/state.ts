@@ -81,5 +81,9 @@ export const KitchenState = schema({
   queue: t.array("string"),
   /** The restaurant's money, in cents. */
   money: t.number().default(0),
+  /** Units of each ingredient in the fridge, by IngredientId. */
+  fridge: t.map("number"),
+  /** Menu items whose recipe the restaurant knows: the menu. Customers order from these, stock or no stock. */
+  unlockedRecipes: t.array("string"),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;

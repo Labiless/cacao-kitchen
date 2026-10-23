@@ -10,7 +10,6 @@ import {
   MAX_CUSTOMERS,
   MAX_PLAYERS,
   MENU,
-  MENU_ITEMS,
   Message,
   PLAYER_SIZE,
   PLAYER_SPEED,
@@ -29,16 +28,22 @@ import {
   entranceSpot,
   cleanName,
   customerReadyToPay,
+  unlockedMenu,
+  INGREDIENTS,
+  INGREDIENT_IDS,
+  STARTING_MONEY_CENTS,
+  STARTING_RECIPES,
   isIngredient,
   isMenuItem,
   isNearFridge,
+  isNearPhone,
   isNearStove,
   freeTicketSlot,
   isNearTicketSlot,
   isNearRegister,
   isNearTable,
   isRole,
-  overlapsRegister,
+  overlapsHallFurniture,
   overlapsTable,
   overlapsKitchenFurniture,
   seatPosition,
@@ -47,6 +52,7 @@ import {
   type InputState,
   type CookMessage,
   type CustomerStatus,
+  type BuyIngredientMessage,
   type DiscardTicketMessage,
   type TakeIngredientMessage,
   type JoinOptions,
@@ -84,6 +90,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   onCreate() {
     this.nextCustomerAt = this.clock.currentTime + FIRST_CUSTOMER_DELAY_MS;
+    this.state.money = STARTING_MONEY_CENTS;
+    for (const ingredient of INGREDIENT_IDS) this.state.fridge.set(ingredient, 0);
+    this.state.unlockedRecipes.push(...STARTING_RECIPES);
 
     for (const { id, x, y } of TABLE_LAYOUT) {
       const table = new Table();
@@ -115,7 +124,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.onMessage(Message.PlaceOrder, (client, message: PlaceOrderMessage) => {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
       const slot = freeTicketSlot(this.state);
-      if (!customer || !isMenuItem(message?.item) || slot === null) return;
+      if (!customer || !isMenuItem(message?.item) || !unlockedMenu(this.state).includes(message.item)) return;
+      if (slot === null) return;
 
       const ticket = new Ticket();
       ticket.number = ++this.ticketCount;
@@ -143,13 +153,29 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     this.onMessage(Message.TakeIngredient, (client, message: TakeIngredientMessage) => {
       const player = this.state.players.get(client.sessionId);
-      if (player?.role !== "kitchen" || player.holding || !isNearFridge(player)) return;
-      if (isIngredient(message?.ingredient)) player.holding = message.ingredient;
+      const ingredient = message?.ingredient;
+      if (player?.role !== "kitchen" || player.holding || !isNearFridge(player) || !isIngredient(ingredient)) return;
+      const stock = this.state.fridge.get(ingredient) ?? 0;
+      if (stock <= 0) return;
+      this.state.fridge.set(ingredient, stock - 1);
+      player.holding = ingredient;
+    });
+
+    this.onMessage(Message.BuyIngredient, (client, message: BuyIngredientMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      const ingredient = message?.ingredient;
+      if (player?.role !== "hall" || !isNearPhone(player) || !isIngredient(ingredient)) return;
+      const { units, priceCents } = INGREDIENTS[ingredient].pack;
+      if (this.state.money < priceCents) return;
+      this.state.money -= priceCents;
+      this.state.fridge.set(ingredient, (this.state.fridge.get(ingredient) ?? 0) + units);
     });
 
     this.onMessage(Message.Cook, (client, message: CookMessage) => {
       const player = this.state.players.get(client.sessionId);
-      const recipe = isMenuItem(message?.dish) ? RECIPES[message.dish] : null;
+      const recipe = isMenuItem(message?.dish) && unlockedMenu(this.state).includes(message.dish)
+        ? RECIPES[message.dish]
+        : null;
       if (player?.role !== "kitchen" || !recipe || !isNearStove(player)) return;
       if (this.state.stove.status !== "idle" || player.holding !== recipe.ingredient) return;
 
@@ -231,6 +257,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         break;
       }
       case "putBack":
+        if (isIngredient(player.holding)) {
+          this.state.fridge.set(player.holding, (this.state.fridge.get(player.holding) ?? 0) + 1);
+        }
         player.holding = "";
         break;
       case "takeDish":
@@ -262,6 +291,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       case "readTicket":
       case "openFridge":
       case "openStove":
+      case "openPhone":
       case "blocked":
         // Nothing to do on the server: these only open a popup (or explain why E does nothing).
         break;
@@ -349,7 +379,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   private hitsObstacle(x: number, y: number) {
-    if (overlapsKitchenFurniture({ x, y }) || overlapsRegister({ x, y })) return true;
+    if (overlapsKitchenFurniture({ x, y }) || overlapsHallFurniture({ x, y })) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }
@@ -440,12 +470,16 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   private spawnCustomer() {
+    // One random item off the menu, whether or not there's anything in the fridge to make it.
+    const menu = unlockedMenu(this.state);
+    if (menu.length === 0) return;
+
     const customer = new Customer();
     customer.id = `c${++this.customerCount}`;
     const spot = entranceSpot(0);
     customer.x = spot.x;
     customer.y = spot.y;
-    customer.wants = MENU_ITEMS[Math.floor(Math.random() * MENU_ITEMS.length)];
+    customer.wants = menu[Math.floor(Math.random() * menu.length)];
     this.setCustomerStatus(customer, "waiting");
     this.state.customers.set(customer.id, customer);
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MENU, MENU_ITEMS, Message, orderPhrase, type MenuItemId, type PlaceOrderMessage } from "@cacao/shared";
+import { MENU, Message, orderPhrase, unlockedMenu, type MenuItemId, type PlaceOrderMessage } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 
 interface Props {
@@ -38,7 +38,7 @@ export function OrderDialog({ room, customerId, wants }: Props) {
         <div>
           <small className="hint">Seleziona cosa ordina il cliente</small>
           <div className="menu-grid">
-            {MENU_ITEMS.map((id) => (
+            {unlockedMenu(room.state).map((id) => (
               <button
                 key={id}
                 type="button"
