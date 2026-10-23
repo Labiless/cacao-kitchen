@@ -19,7 +19,7 @@ import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState, Stove } from "./state.ts";
 
 export const ACTIONS = {
-  cleanTable: { label: "Pulisci tavolo", durationMs: 2500 },
+  cleanTable: { label: "Pulisci tavolo", durationMs: 1200 },
   checkout: { label: "Incassa", durationMs: 2000 },
 } as const;
 export type ActionId = keyof typeof ACTIONS;

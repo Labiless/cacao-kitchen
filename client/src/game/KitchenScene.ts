@@ -39,6 +39,7 @@ import {
   type Interaction,
   type EquipmentId,
   type Player,
+  type Role,
   type Stove,
   type Table,
 } from "@cacao/shared";
@@ -222,7 +223,7 @@ export class KitchenScene extends Phaser.Scene {
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
 
       callbacks.listen("money", (money, previous) => {
-        if (previous !== undefined && money > previous) this.showMoneyIn(money - previous);
+        if (previous !== undefined && money > previous && this.sees("hall")) this.showMoneyIn(money - previous);
       }),
 
       callbacks.onAdd("stoves", (stove, id) => {
@@ -231,13 +232,17 @@ export class KitchenScene extends Phaser.Scene {
           const sprite = this.stoves.get(id);
           if (!sprite) return;
           if (status === "cooking") sprite.startedAt = this.time.now;
+          if (!this.sees("kitchen")) return;
           sprite.icon.setText(status === "cooking" ? "🔥" : status === "ready" && stove.dish ? MENU[stove.dish].emoji : "");
         }));
       }),
 
       callbacks.onAdd("tickets", (ticket, id) => {
         const { x, y } = TICKET_SLOTS[ticket.slot];
-        const slip = this.add.rectangle(x, y, TICKET_SLOT_SIZE - 8, TICKET_SLOT_SIZE - 4, 0xfffdf6).setDepth(Depth.Table);
+        const slip = this.add
+          .rectangle(x, y, TICKET_SLOT_SIZE - 8, TICKET_SLOT_SIZE - 4, 0xfffdf6)
+          .setDepth(Depth.Table)
+          .setVisible(this.sees("kitchen"));
         this.tickets.set(id, slip);
       }),
       callbacks.onRemove("tickets", (_ticket, id) => {
@@ -270,6 +275,14 @@ export class KitchenScene extends Phaser.Scene {
     this.drawInteractionHint();
     this.drawActionProgress();
     this.drawPatience();
+  }
+
+  /**
+   * Each player only sees the details of their own side: the cook doesn't see how customers are doing,
+   * the waiter doesn't see tickets or what's cooking. Both see the room itself, the people and the pass.
+   */
+  private sees(area: Role) {
+    return this.room.state.players.get(this.room.sessionId)?.role === area;
   }
 
   /** What E would do for the local player right now, judged from where they appear on screen. */
@@ -397,6 +410,8 @@ export class KitchenScene extends Phaser.Scene {
     for (const [sessionId, startedAt] of this.actionStartedAt) {
       const player = this.room.state.players.get(sessionId);
       if (!player?.action) continue;
+      // Cleaning and checkout happen in the hall.
+      if (!this.sees("hall")) continue;
       const progress = Math.min(1, (this.time.now - startedAt) / ACTIONS[player.action].durationMs);
 
       if (player.action === "checkout") {
@@ -409,6 +424,7 @@ export class KitchenScene extends Phaser.Scene {
     }
 
     for (const [id, { startedAt }] of this.stoves) {
+      if (!this.sees("kitchen")) break;
       const stove = this.room.state.stoves.get(id);
       if (stove?.status !== "cooking" || !stove.dish) continue;
       const progress = Math.min(1, (this.time.now - startedAt) / RECIPES[stove.dish].cookMs);
@@ -418,6 +434,7 @@ export class KitchenScene extends Phaser.Scene {
 
   /** Patience bar above every customer whose patience is draining. */
   private drawPatience() {
+    if (!this.sees("hall")) return;
     for (const [id, { body }] of this.customers) {
       const customer = this.room.state.customers.get(id);
       if (!customer || !CUSTOMER_TIMING.patienceS[customer.status]) continue;
@@ -505,8 +522,10 @@ export class KitchenScene extends Phaser.Scene {
     this.stoves.set(id, { body, burners, icon, startedAt: 0 });
   }
 
+  /** What the player is carrying: shown for yourself and for whoever works on your side. */
   private heldIcon(player: Player) {
-    return player.holding ? heldItemInfo(player.holding).emoji : "";
+    if (!player.holding || !this.sees(player.role)) return "";
+    return heldItemInfo(player.holding).emoji;
   }
 
   private labelFor(sessionId: string, player: Player) {
@@ -539,20 +558,21 @@ export class KitchenScene extends Phaser.Scene {
       eating: "😋",
       queuing: "💶",
     };
-    this.customers.get(id)?.icon.setText(icons[customer.status] ?? "");
+    this.customers.get(id)?.icon.setText(this.sees("hall") ? icons[customer.status] ?? "" : "");
   }
 
-  /** Fades the customer out with a face showing how it went. */
+  /** Fades the customer out, with a face showing how it went for the waiter. */
   private showCustomerLeaving(id: string, happy: boolean) {
     const sprite = this.customers.get(id);
     if (!sprite) return;
+    this.tweens.add({ targets: [sprite.body, sprite.icon], alpha: 0, duration: 1000 });
+    if (!this.sees("hall")) return;
 
     const face = this.add
       .text(sprite.body.x, sprite.body.y - CUSTOMER_SIZE / 2, happy ? "😊" : "😠", { fontSize: "24px" })
       .setOrigin(0.5, 1)
       .setDepth(Depth.Label);
     this.tweens.add({ targets: face, y: face.y - 30, alpha: 0, duration: 1200, onComplete: () => face.destroy() });
-    this.tweens.add({ targets: [sprite.body, sprite.icon], alpha: 0, duration: 1000 });
   }
 
   private removeCustomer(id: string) {
@@ -576,7 +596,7 @@ export class KitchenScene extends Phaser.Scene {
     if (!sprite) return;
     const info = TABLE_STATUS_INFO[table.status];
     sprite.body.setFillStyle(Phaser.Display.Color.HexStringToColor(info.color).color);
-    sprite.label.setText(info.label);
+    sprite.label.setText(this.sees("hall") ? info.label : "");
   }
 
   /** Kitchen tiles on the left, dining hall floorboards on the right, wall in between. */
