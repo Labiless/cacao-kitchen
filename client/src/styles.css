@@ -112,7 +112,8 @@ input {
 }
 .dialog { width: min(340px, 100%); }
 .dialog h2 { margin: 0; font-size: 20px; }
-.fridge-dialog { width: min(340px, 100%); }
+.fridge-dialog, .stove-dialog { width: min(340px, 100%); }
+.recipe { display: block; font-weight: 400; color: var(--muted); }
 .dialog label { font-size: 14px; color: var(--muted); }
 
 button.secondary {

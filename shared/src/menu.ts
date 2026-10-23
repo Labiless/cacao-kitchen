@@ -20,6 +20,19 @@ export function isIngredient(value: unknown): value is IngredientId {
   return INGREDIENT_IDS.includes(value as IngredientId);
 }
 
+/** How each menu item is cooked on the stove: which ingredient it takes and how long. */
+export const RECIPES: Record<MenuItemId, { ingredient: IngredientId; cookMs: number }> = {
+  chocolate: { ingredient: "cocoa", cookMs: 6000 },
+};
+
+/** Anything a player can carry: an ingredient or a cooked dish. */
+export type HeldItem = IngredientId | MenuItemId;
+
+/** Label and emoji of something a player is carrying. */
+export function heldItemInfo(item: HeldItem): { label: string; emoji: string } {
+  return isIngredient(item) ? INGREDIENTS[item] : MENU[item];
+}
+
 /** Ways a customer can phrase their order; `{item}` is replaced by the item's spoken name. */
 const ORDER_PHRASES = [
   "Vorrei {item}, per favore.",

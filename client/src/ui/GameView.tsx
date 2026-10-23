@@ -4,6 +4,7 @@ import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
 import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, createGame, type KitchenPopup } from "../game/createGame.ts";
 import { FridgeDialog } from "./FridgeDialog.tsx";
+import { StoveDialog } from "./StoveDialog.tsx";
 import { NameDialog } from "./NameDialog.tsx";
 import { OrderDialog } from "./OrderDialog.tsx";
 import { TicketDialog } from "./TicketDialog.tsx";
@@ -84,6 +85,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
       {popup?.kind === "ticket" && <TicketDialog room={room} ticketId={popup.ticketId} onClose={closePopup} />}
       {popup?.kind === "fridge" && <FridgeDialog room={room} onClose={closePopup} />}
+      {popup?.kind === "stove" && <StoveDialog room={room} onClose={closePopup} />}
       {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
     </div>

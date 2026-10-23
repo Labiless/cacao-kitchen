@@ -2,7 +2,8 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 import type { Role } from "./index.ts";
 import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
-import type { IngredientId, MenuItemId } from "./menu.ts";
+import type { HeldItem, MenuItemId } from "./menu.ts";
+import type { StoveStatus } from "./kitchen.ts";
 
 export const Player = schema({
   name: t.string(),
@@ -15,7 +16,7 @@ export const Player = schema({
   /** Id of the table the action is performed on. */
   actionTarget: t.string().default(""),
   /** What the player is carrying (one thing at a time), or "" when their hands are empty. */
-  holding: t.string<IngredientId | "">().default(""),
+  holding: t.string<HeldItem | "">().default(""),
 }, "Player");
 export type Player = SchemaType<typeof Player>;
 
@@ -59,10 +60,18 @@ export const Ticket = schema({
 }, "Ticket");
 export type Ticket = SchemaType<typeof Ticket>;
 
+export const Stove = schema({
+  status: t.string<StoveStatus>().default("idle"),
+  /** What's cooking or ready to be picked up; "" when idle. */
+  dish: t.string<MenuItemId | "">().default(""),
+}, "Stove");
+export type Stove = SchemaType<typeof Stove>;
+
 export const KitchenState = schema({
   players: t.map(Player),
   tables: t.map(Table),
   customers: t.map(Customer),
   tickets: t.map(Ticket),
+  stove: Stove,
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;

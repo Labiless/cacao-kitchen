@@ -45,7 +45,13 @@ export const Message = {
   DiscardTicket: "discardTicket",
   /** Payload: TakeIngredientMessage. Sent from the fridge popup. */
   TakeIngredient: "takeIngredient",
+  /** Payload: CookMessage. Sent from the stove popup. */
+  Cook: "cook",
 } as const;
+
+export interface CookMessage {
+  dish: MenuItemId;
+}
 
 export interface TakeIngredientMessage {
   ingredient: IngredientId;

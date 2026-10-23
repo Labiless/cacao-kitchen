@@ -7,8 +7,9 @@ import {
   CUSTOMER_TIMING,
   ENTRANCE,
   FRIDGE,
-  INGREDIENTS,
   MENU,
+  RECIPES,
+  STOVE,
   Message,
   PLAYER_SIZE,
   ROLE_INFO,
@@ -20,6 +21,7 @@ import {
   WORLD,
   attendedCustomer,
   availableInteraction,
+  heldItemInfo,
   interactionLabel,
   type Customer,
   type CustomerStatus,
@@ -60,7 +62,7 @@ const HIGHLIGHT = { width: 4, color: 0xfff3c4 } as const;
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
 /** A popup that only exists in React, opened from the scene. */
-export type KitchenPopup = { kind: "ticket"; ticketId: string } | { kind: "fridge" };
+export type KitchenPopup = { kind: "ticket"; ticketId: string } | { kind: "fridge" } | { kind: "stove" };
 /** Game event asking React to open a popup; the payload is a KitchenPopup. */
 export const OPEN_POPUP_EVENT = "openPopup";
 /** Registry key React sets while one of its popups is open, so the scene ignores movement and E. */
@@ -76,6 +78,11 @@ export class KitchenScene extends Phaser.Scene {
   /** Blank slips on the wall, by ticket id: the cook sees where tickets are, not what they say. */
   private tickets = new Map<string, Phaser.GameObjects.Rectangle>();
   private fridge!: Phaser.GameObjects.Rectangle;
+  private stove!: Phaser.GameObjects.Rectangle;
+  /** Flame while cooking, the dish once it's ready. */
+  private stoveIcon!: Phaser.GameObjects.Text;
+  /** Local time (scene clock) at which the current dish started cooking, to animate its progress bar. */
+  private stoveStartedAt = 0;
   /** Local time (scene clock) at which each player's current action started, to animate its progress bar. */
   private actionStartedAt = new Map<string, number>();
   private bars!: Phaser.GameObjects.Graphics;
@@ -92,6 +99,15 @@ export class KitchenScene extends Phaser.Scene {
     this.fridge = this.add
       .rectangle(FRIDGE.x, FRIDGE.y, FRIDGE.width, FRIDGE.height, 0xcfe6ef)
       .setDepth(Depth.Table);
+    this.stove = this.add
+      .rectangle(STOVE.x, STOVE.y, STOVE.width, STOVE.height, 0x4a4a4f)
+      .setDepth(Depth.Table);
+    const burners = this.add.graphics().setDepth(Depth.Table);
+    burners.lineStyle(3, 0x2a2a2e);
+    for (const [dx, dy] of [[-12, -12], [12, -12], [-12, 12], [12, 12]]) {
+      burners.strokeCircle(STOVE.x + dx, STOVE.y + dy, 8);
+    }
+    this.stoveIcon = this.add.text(STOVE.x, STOVE.y, "", { fontSize: "26px" }).setOrigin(0.5).setDepth(Depth.Label);
     this.add
       .text(FRIDGE.x, FRIDGE.y, "FRIGO", { ...TEXT_STYLE, fontSize: "11px", fontStyle: "bold" })
       .setOrigin(0.5)
@@ -150,6 +166,11 @@ export class KitchenScene extends Phaser.Scene {
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
 
+      callbacks.listen(this.room.state.stove, "status", (status) => {
+        if (status === "cooking") this.stoveStartedAt = this.time.now;
+        this.refreshStoveIcon();
+      }),
+
       callbacks.onAdd("tickets", (ticket, id) => {
         const { x, y } = TICKET_SLOTS[ticket.slot];
         const slip = this.add.rectangle(x, y, TICKET_SLOT_SIZE - 8, TICKET_SLOT_SIZE - 4, 0xfffdf6).setDepth(Depth.Table);
@@ -198,6 +219,7 @@ export class KitchenScene extends Phaser.Scene {
     if (!interaction || interaction.kind === "blocked") return;
     if (interaction.kind === "readTicket") this.openPopup({ kind: "ticket", ticketId: interaction.ticketId });
     else if (interaction.kind === "openFridge") this.openPopup({ kind: "fridge" });
+    else if (interaction.kind === "openStove") this.openPopup({ kind: "stove" });
     else this.room.send(Message.Interact);
   }
 
@@ -220,6 +242,8 @@ export class KitchenScene extends Phaser.Scene {
     }
     if (target?.kind === "fridge") this.fridge.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.fridge.setStrokeStyle(2, 0x9bbfcc);
+    if (target?.kind === "stove") this.stove.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.stove.setStrokeStyle();
 
     for (const [id, slip] of this.tickets) {
       if (target?.kind === "ticket" && target.id === id) slip.setStrokeStyle(3, 0xe8833a);
@@ -236,7 +260,7 @@ export class KitchenScene extends Phaser.Scene {
     }
   }
 
-  /** The thing to highlight for an interaction (a customer, a table, a ticket, the fridge) and where its edges are. */
+  /** The thing to highlight for an interaction (a customer, a table, a ticket, a kitchen station) and where its edges are. */
   private interactionTarget(interaction: Interaction) {
     if (interaction.kind === "readTicket") {
       const slip = this.tickets.get(interaction.ticketId);
@@ -247,20 +271,27 @@ export class KitchenScene extends Phaser.Scene {
     if (interaction.kind === "openFridge" || interaction.kind === "putBack") {
       return { kind: "fridge", id: "", x: FRIDGE.x, top: FRIDGE.y - FRIDGE.height / 2, bottom: FRIDGE.y + FRIDGE.height / 2 };
     }
+    if (
+      interaction.kind === "openStove" || interaction.kind === "takeDish"
+      || (interaction.kind === "blocked" && interaction.station === "stove")
+    ) {
+      return { kind: "stove", id: "", x: STOVE.x, top: STOVE.y - STOVE.height / 2, bottom: STOVE.y + STOVE.height / 2 };
+    }
     if (interaction.kind === "seat" || interaction.kind === "action") {
       const table = this.room.state.tables.get(interaction.tableId);
       if (!table) return null;
       const half = TABLE_SIZE / 2;
       return { kind: "table", id: interaction.tableId, x: table.x, top: table.y - half, bottom: table.y + half };
     }
-    const sprite = this.customers.get(interaction.customerId);
-    if (!sprite) return null;
+    const customerId = "customerId" in interaction ? interaction.customerId : undefined;
+    const sprite = customerId && this.customers.get(customerId);
+    if (!customerId || !sprite) return null;
     const { x, y } = sprite.body;
     const half = CUSTOMER_SIZE / 2;
-    return { kind: "customer", id: interaction.customerId, x, top: y - half - 12, bottom: y + half };
+    return { kind: "customer", id: customerId, x, top: y - half - 12, bottom: y + half };
   }
 
-  /** A bar above the target of every action in progress, so both players can see it. */
+  /** A bar above the target of every action in progress and over the stove while cooking, so both players can see it. */
   private drawActionProgress() {
     for (const [sessionId, startedAt] of this.actionStartedAt) {
       const player = this.room.state.players.get(sessionId);
@@ -269,6 +300,12 @@ export class KitchenScene extends Phaser.Scene {
 
       const progress = Math.min(1, (this.time.now - startedAt) / ACTIONS[player.action].durationMs);
       this.drawBar(table.x, table.y - TABLE_SIZE / 2 - 10, TABLE_SIZE + 10, progress, 0x7bd389);
+    }
+
+    const { status, dish } = this.room.state.stove;
+    if (status === "cooking" && dish) {
+      const progress = Math.min(1, (this.time.now - this.stoveStartedAt) / RECIPES[dish].cookMs);
+      this.drawBar(STOVE.x, STOVE.y - STOVE.height / 2 - 10, STOVE.width + 10, progress, 0xf2994a);
     }
   }
 
@@ -324,8 +361,13 @@ export class KitchenScene extends Phaser.Scene {
     this.sprites.set(sessionId, { body, label, held, target: { x: player.x, y: player.y } });
   }
 
+  private refreshStoveIcon() {
+    const { status, dish } = this.room.state.stove;
+    this.stoveIcon.setText(status === "cooking" ? "🔥" : status === "ready" && dish ? MENU[dish].emoji : "");
+  }
+
   private heldIcon(player: Player) {
-    return player.holding ? INGREDIENTS[player.holding].emoji : "";
+    return player.holding ? heldItemInfo(player.holding).emoji : "";
   }
 
   private labelFor(sessionId: string, player: Player) {

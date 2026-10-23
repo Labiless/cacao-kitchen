@@ -14,6 +14,7 @@ import {
   PLAYER_SIZE,
   PLAYER_SPEED,
   Player,
+  RECIPES,
   ROLES,
   ROLE_INFO,
   TABLE_LAYOUT,
@@ -27,6 +28,7 @@ import {
   isIngredient,
   isMenuItem,
   isNearFridge,
+  isNearStove,
   freeTicketSlot,
   isNearTicketSlot,
   isNearTable,
@@ -37,6 +39,7 @@ import {
   tableActionFor,
   zoneFor,
   type InputState,
+  type CookMessage,
   type CustomerStatus,
   type DiscardTicketMessage,
   type TakeIngredientMessage,
@@ -72,6 +75,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   /** When each customer in a TIMED_STATUSES status moves on to the next one. */
   private statusEndsAt = new Map<string, number>();
   private nextCustomerAt = 0;
+  /** When the dish on the stove is done. */
+  private stoveReadyAt = 0;
   private customerCount = 0;
   private ticketCount = 0;
 
@@ -138,6 +143,18 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       const player = this.state.players.get(client.sessionId);
       if (player?.role !== "kitchen" || player.holding || !isNearFridge(player)) return;
       if (isIngredient(message?.ingredient)) player.holding = message.ingredient;
+    });
+
+    this.onMessage(Message.Cook, (client, message: CookMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      const recipe = isMenuItem(message?.dish) ? RECIPES[message.dish] : null;
+      if (player?.role !== "kitchen" || !recipe || !isNearStove(player)) return;
+      if (this.state.stove.status !== "idle" || player.holding !== recipe.ingredient) return;
+
+      player.holding = "";
+      this.state.stove.status = "cooking";
+      this.state.stove.dish = message.dish;
+      this.stoveReadyAt = this.clock.currentTime + recipe.cookMs;
     });
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
@@ -220,8 +237,14 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       case "putBack":
         player.holding = "";
         break;
+      case "takeDish":
+        player.holding = interaction.dish;
+        this.state.stove.status = "idle";
+        this.state.stove.dish = "";
+        break;
       case "readTicket":
       case "openFridge":
+      case "openStove":
       case "blocked":
         // Nothing to do on the server: these only open a popup (or explain why E does nothing).
         break;
@@ -265,6 +288,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.updateAction(sessionId, player);
     });
     this.updateCustomers(dt);
+
+    if (this.state.stove.status === "cooking" && this.clock.currentTime >= this.stoveReadyAt) {
+      this.state.stove.status = "ready";
+    }
   }
 
   private movePlayer(player: Player, input: InputState, dt: number) {
