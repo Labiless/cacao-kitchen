@@ -7,7 +7,7 @@ import {
   Customer,
   FOLLOW_GAP,
   KitchenState,
-  MAX_CUSTOMERS,
+  ENTRANCE_LINE_LENGTH,
   MAX_PLAYERS,
   MENU,
   Message,
@@ -25,6 +25,7 @@ import {
   attendedCustomer,
   availableInteraction,
   canReachCustomer,
+  entranceLine,
   entranceSpot,
   cleanName,
   customerReadyToPay,
@@ -388,24 +389,25 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   private updateCustomers(dt: number) {
     const now = this.clock.currentTime;
-    // A new customer every so often, while someone can serve them, the entrance is clear and there's room.
-    const customers = [...this.state.customers.values()];
+    // Customers turn up at random intervals while someone can serve them and there's room in line.
     const hasWaiter = [...this.state.players.values()].some((p) => p.role === "hall");
-    const entranceClear = !customers.some((c) => c.status === "waiting");
-    if (hasWaiter && entranceClear && customers.length < MAX_CUSTOMERS && now >= this.nextCustomerAt) {
+    if (hasWaiter && entranceLine(this.state).length < ENTRANCE_LINE_LENGTH && now >= this.nextCustomerAt) {
       this.spawnCustomer();
-      this.nextCustomerAt = now + CUSTOMER_TIMING.spawnIntervalS * 1000;
+      const { min, max } = CUSTOMER_TIMING.spawnIntervalS;
+      this.nextCustomerAt = now + (min + Math.random() * (max - min)) * 1000;
     }
 
-    // Customers waiting at the entrance line up in order of arrival (customer ids are sequential).
-    const entranceLine = [...this.state.customers.values()]
-      .filter((c) => c.status === "waiting")
-      .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+    const line = entranceLine(this.state);
 
     this.state.customers.forEach((customer) => {
       const patienceS = CUSTOMER_TIMING.patienceS[customer.status];
       if (patienceS) {
-        customer.patience = Math.max(0, customer.patience - dt / patienceS);
+        // The longer the line they're in, the faster they lose patience.
+        const lineLength = customer.status === "waiting" ? line.length
+          : customer.status === "queuing" ? this.state.queue.length
+          : 1;
+        const crowding = 1 + CUSTOMER_TIMING.crowdImpatience * Math.max(0, lineLength - 1);
+        customer.patience = Math.max(0, customer.patience - (dt * crowding) / patienceS);
         if (customer.patience === 0) {
           this.sendAway(customer);
           return;
@@ -434,7 +436,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         }
 
         case "waiting":
-          this.walkTowards(customer, entranceSpot(Math.max(0, entranceLine.indexOf(customer))), dt);
+          this.walkTowards(customer, entranceSpot(Math.max(0, line.indexOf(customer))), dt);
           break;
 
         case "queuing": {
@@ -476,9 +478,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     const customer = new Customer();
     customer.id = `c${++this.customerCount}`;
-    const spot = entranceSpot(0);
-    customer.x = spot.x;
-    customer.y = spot.y;
+    // They come in through the door and walk to the back of the line.
+    customer.x = WORLD.width + CUSTOMER_SIZE;
+    customer.y = entranceSpot(0).y;
     customer.wants = menu[Math.floor(Math.random() * menu.length)];
     this.setCustomerStatus(customer, "waiting");
     this.state.customers.set(customer.id, customer);

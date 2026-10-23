@@ -24,7 +24,10 @@ export const TABLE_STATUS_INFO: Record<TableStatus, { label: string; color: stri
 
 /** Where tables go when a room is created. */
 export const TABLE_LAYOUT = [
-  { id: "t1", label: "Tavolo 1", x: 640, y: 180 },
+  { id: "t1", label: "Tavolo 1", x: 460, y: 170 },
+  { id: "t2", label: "Tavolo 2", x: 620, y: 170 },
+  { id: "t3", label: "Tavolo 3", x: 460, y: 340 },
+  { id: "t4", label: "Tavolo 4", x: 620, y: 340 },
 ] as const;
 
 export function tableLabel(tableId: string) {
@@ -34,9 +37,12 @@ export function tableLabel(tableId: string) {
 /** Doormat where customers come in and wait to be led to a table. */
 export const ENTRANCE = { x: WORLD.width - 40, y: WORLD.height - 50, size: 70 } as const;
 
-/** Where the i-th customer waiting at the entrance stands: on the mat, then in a line up from it. */
+/** Most customers waiting in line at the entrance; nobody else comes in while it's full. */
+export const ENTRANCE_LINE_LENGTH = 6;
+
+/** Where the i-th customer in line at the entrance stands: on the mat, then along the bottom wall. */
 export function entranceSpot(index: number) {
-  return { x: ENTRANCE.x, y: ENTRANCE.y - index * 40 };
+  return { x: ENTRANCE.x - index * 40, y: ENTRANCE.y };
 }
 
 /** Till by the exit, across the hall from the entrance: customers queue here to pay before leaving. */
@@ -45,11 +51,8 @@ export const REGISTER = { x: WORLD.width - 50, y: 30, width: 80, height: 40 } as
 /** On the hall side of the middle wall: the waiter orders ingredients here. */
 export const PHONE = { x: WALL.x + WALL.thickness / 2 + 14, y: 110, width: 28, height: 28 } as const;
 
-/** Most customers in the restaurant at once; also the length of the queue at the till. */
-export const MAX_CUSTOMERS = 4;
-
-/** Where queuing customers stand, front of the queue first: in a line down from the till. */
-export const QUEUE_SPOTS = Array.from({ length: MAX_CUSTOMERS }, (_, i) => ({
+/** Where customers queuing at the till stand, front first, in a line down from it: one spot per table. */
+export const QUEUE_SPOTS = Array.from({ length: TABLE_LAYOUT.length }, (_, i) => ({
   x: REGISTER.x,
   y: REGISTER.y + REGISTER.height / 2 + 8 + 15 + i * 40,
 }));
@@ -71,8 +74,13 @@ export const CUSTOMER_TIMING = {
   readingMenuS: 4,
   /** Seconds a customer spends eating before they get up and go pay. */
   eatingS: 6,
-  /** Seconds between one customer arriving and the next, as long as nobody is waiting at the entrance. */
-  spawnIntervalS: 10,
+  /** Seconds between one customer arriving and the next: random in this range. */
+  spawnIntervalS: { min: 4, max: 12 },
+  /**
+   * In a line (at the entrance or at the till), patience drains this much faster for every other
+   * customer in the same line: 0.2 means 1.2× with one other, 1.4× with two, and so on.
+   */
+  crowdImpatience: 0.2,
   /** Seconds a leaving customer stays visible, so players see how it went. */
   leavingS: 1.2,
 } as const;

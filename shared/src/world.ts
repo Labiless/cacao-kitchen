@@ -6,8 +6,8 @@ export const PLAYER_SIZE = 40;
 /** Pixels per second. */
 export const PLAYER_SPEED = 220;
 
-/** Vertical wall in the middle of the map: kitchen on the left, dining hall on the right. */
-export const WALL = { x: WORLD.width / 2, thickness: 20 } as const;
+/** Vertical wall splitting the map: a compact kitchen on the left, the bigger dining hall on the right. */
+export const WALL = { x: 300, thickness: 20 } as const;
 
 /** Max gap (px) between a player's edge and a target's edge to interact with it. */
 export const INTERACT_DISTANCE = 24;

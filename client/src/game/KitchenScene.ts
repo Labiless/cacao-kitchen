@@ -6,6 +6,7 @@ import {
   CUSTOMER_SIZE,
   CUSTOMER_TIMING,
   ENTRANCE,
+  ENTRANCE_LINE_LENGTH,
   FRIDGE,
   MENU,
   PASS,
@@ -26,6 +27,7 @@ import {
   WORLD,
   attendedCustomer,
   availableInteraction,
+  entranceSpot,
   formatMoney,
   heldItemInfo,
   isMenuItem,
@@ -565,15 +567,18 @@ export class KitchenScene extends Phaser.Scene {
     g.lineStyle(1, 0x8a6a4a, 0.35);
     for (const { x, y } of QUEUE_SPOTS) g.strokeCircle(x, y, CUSTOMER_SIZE / 2 + 2);
 
-    // Doormat where customers come in.
+    // Doormat where customers come in, and marks where the line forms along the bottom wall.
     g.fillStyle(0x9c3d54, 0.55);
     g.fillRect(ENTRANCE.x - ENTRANCE.size / 2, ENTRANCE.y - ENTRANCE.size / 2, ENTRANCE.size, ENTRANCE.size);
+    for (let i = 1; i < ENTRANCE_LINE_LENGTH; i++) {
+      const { x, y } = entranceSpot(i);
+      g.strokeCircle(x, y, CUSTOMER_SIZE / 2 + 2);
+    }
 
+    // Area names where there's room: the tickets hang on the top kitchen wall, the line forms along the bottom of the hall.
     const labelStyle = { ...TEXT_STYLE, fontSize: "18px", fontStyle: "bold" };
-    // Area names at the bottom: the top kitchen wall holds the tickets.
-    const labelY = WORLD.height - 16;
-    this.add.text(WALL.x / 2, labelY, ROLE_INFO.kitchen.area.toUpperCase(), labelStyle).setOrigin(0.5, 1).setAlpha(0.35);
-    this.add.text((WALL.x + WORLD.width) / 2, labelY, ROLE_INFO.hall.area.toUpperCase(), labelStyle).setOrigin(0.5, 1).setAlpha(0.35);
+    this.add.text(WALL.x / 2, WORLD.height - 16, ROLE_INFO.kitchen.area.toUpperCase(), labelStyle).setOrigin(0.5, 1).setAlpha(0.35);
+    this.add.text((WALL.x + WORLD.width) / 2, 16, ROLE_INFO.hall.area.toUpperCase(), labelStyle).setOrigin(0.5, 0).setAlpha(0.35);
     this.add
       .text(ENTRANCE.x, ENTRANCE.y + ENTRANCE.size / 2, "Ingresso", { ...TEXT_STYLE, fontSize: "12px" })
       .setOrigin(0.5, 1)

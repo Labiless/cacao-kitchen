@@ -82,6 +82,13 @@ export function canReachCustomer(state: KitchenState, at: { x: number; y: number
   return table ? isNearTable(at, table) : isNearCustomer(at, customer);
 }
 
+/** Customers waiting at the entrance, front of the line first (customer ids are sequential, so by arrival). */
+export function entranceLine(state: KitchenState) {
+  return [...state.customers.values()]
+    .filter((c) => c.status === "waiting")
+    .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
+}
+
 /** The restaurant's menu: the items whose recipe has been unlocked, in menu order. */
 export function unlockedMenu(state: KitchenState): MenuItemId[] {
   return MENU_ITEMS.filter((id) => state.unlockedRecipes.includes(id));
@@ -157,9 +164,11 @@ export function availableInteraction(
     // Cleaning a table with the customer in tow is fine; otherwise E lets them go.
     return tableAction(state, at) ?? { kind: "release", customerId: toTable.id };
   } else {
+    // Only the customer at the front of the line can be led to a table.
+    const front = entranceLine(state)[0];
+    if (front && isNearCustomer(at, front)) return { kind: "lead", customerId: front.id };
     for (const customer of state.customers.values()) {
       if (!canReachCustomer(state, at, customer)) continue;
-      if (customer.status === "waiting") return { kind: "lead", customerId: customer.id };
       if (customer.status === "readyToOrder") {
         return freeTicketSlot(state) === null
           ? { kind: "blocked", customerId: customer.id, reason: "Comande piene in cucina" }
