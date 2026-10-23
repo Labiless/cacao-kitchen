@@ -8,3 +8,14 @@ const serverUrl =
 export const client = new Client(serverUrl);
 
 export type KitchenRoom = Room<any, KitchenState>;
+
+/**
+ * Joining resolves before the first state patch arrives (noticeable over a real network),
+ * so wait for it before handing the room to the UI and the game.
+ */
+export function waitForState(room: KitchenRoom) {
+  return new Promise<KitchenRoom>((resolve) => {
+    if (room.state?.players) resolve(room);
+    else room.onStateChange.once(() => resolve(room));
+  });
+}

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { ROOM_NAME, type JoinOptions, type KitchenState } from "@cacao/shared";
-import { client, type KitchenRoom } from "../network.ts";
+import { client, waitForState, type KitchenRoom } from "../network.ts";
 
 interface Props {
   onJoined: (room: KitchenRoom) => void;
@@ -16,7 +16,7 @@ export function Lobby({ onJoined }: Props) {
     setBusy(true);
     setError(null);
     try {
-      onJoined(await join({ name }));
+      onJoined(await waitForState(await join({ name })));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
