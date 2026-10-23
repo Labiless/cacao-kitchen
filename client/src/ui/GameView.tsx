@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { attendedCustomer, type MenuItemId } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
-import { createGame } from "../game/createGame.ts";
+import { MODAL_OPEN_KEY, OPEN_TICKETS_EVENT, createGame } from "../game/createGame.ts";
 import { NameDialog } from "./NameDialog.tsx";
 import { OrderDialog } from "./OrderDialog.tsx";
+import { TicketsDialog } from "./TicketsDialog.tsx";
 
 interface Props {
   room: KitchenRoom;
@@ -15,14 +16,26 @@ interface Props {
 
 export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const gameRef = useRef<ReturnType<typeof createGame> | null>(null);
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
+  const [ticketsOpen, setTicketsOpen] = useState(false);
 
   // Phaser owns the canvas; React only mounts/unmounts it.
   useEffect(() => {
     const game = createGame(containerRef.current!, room);
-    return () => game.destroy(true);
+    gameRef.current = game;
+    game.events.on(OPEN_TICKETS_EVENT, () => setTicketsOpen(true));
+    return () => {
+      gameRef.current = null;
+      game.destroy(true);
+    };
   }, [room]);
+
+  // Tell the scene when a React-only popup is open, so the player stands still.
+  useEffect(() => {
+    gameRef.current?.registry.set(MODAL_OPEN_KEY, ticketsOpen);
+  }, [ticketsOpen]);
 
   useEffect(() => {
     room.onLeave(onLeave);
@@ -65,6 +78,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
         {copied === "ok" ? "Link copiato!" : copied === "error" ? "Copia non riuscita" : room.roomId}
       </button>
 
+      {ticketsOpen && <TicketsDialog room={room} onClose={() => setTicketsOpen(false)} />}
       {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
     </div>

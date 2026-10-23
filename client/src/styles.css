@@ -118,6 +118,7 @@ button.secondary {
   background: var(--line);
   color: var(--ink);
 }
+button.danger { background: #c0392b; }
 
 .order-dialog { width: min(380px, 100%); }
 .speech {
@@ -155,3 +156,32 @@ button.secondary {
   justify-content: flex-end;
   gap: 8px;
 }
+
+.tickets-dialog { width: min(340px, 100%); }
+.tickets-dialog h2 { margin: 0; font-size: 20px; }
+.ticket {
+  padding: 14px 16px 18px;
+  background: #fffdf6;
+  border: 1px solid #e0d4bd;
+  border-bottom: 3px dashed #e0d4bd;
+  font-family: ui-monospace, monospace;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+}
+.ticket-header {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #c9b99c;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ticket-item { margin: 12px 0 0; font-size: 18px; }
+.ticket-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.ticket-nav button { padding: 6px 12px; }

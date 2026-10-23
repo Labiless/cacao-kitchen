@@ -12,6 +12,7 @@ import {
   ROLE_INFO,
   TABLE_SIZE,
   TABLE_STATUS_INFO,
+  TICKET_RAIL,
   WALL,
   WORLD,
   attendedCustomer,
@@ -53,6 +54,11 @@ const HIGHLIGHT = { width: 4, color: 0xfff3c4 } as const;
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
+/** Game event asking React to open the tickets popup. */
+export const OPEN_TICKETS_EVENT = "openTickets";
+/** Registry key React sets while one of its popups is open, so the scene ignores movement and E. */
+export const MODAL_OPEN_KEY = "modalOpen";
+
 /** Fraction of the remaining distance covered per frame at 60 fps. */
 const SMOOTHING = 0.3;
 
@@ -60,6 +66,9 @@ export class KitchenScene extends Phaser.Scene {
   private sprites = new Map<string, PlayerSprite>();
   private customers = new Map<string, CustomerSprite>();
   private tables = new Map<string, TableSprite>();
+  private ticketRail!: Phaser.GameObjects.Rectangle;
+  /** Blank slips on the rail: the cook sees how many tickets there are, not what they say. */
+  private ticketSlips!: Phaser.GameObjects.Graphics;
   /** Local time (scene clock) at which each player's current action started, to animate its progress bar. */
   private actionStartedAt = new Map<string, number>();
   private bars!: Phaser.GameObjects.Graphics;
@@ -73,6 +82,10 @@ export class KitchenScene extends Phaser.Scene {
 
   create() {
     this.drawMap();
+    this.ticketRail = this.add
+      .rectangle(TICKET_RAIL.x, TICKET_RAIL.y, TICKET_RAIL.size, TICKET_RAIL.size, 0x6e4b33)
+      .setDepth(Depth.Table);
+    this.ticketSlips = this.add.graphics().setDepth(Depth.Table);
 
     // No key capture: otherwise Phaser swallows these keys and they can't be typed into React inputs.
     this.keys = this.input.keyboard!.addKeys({
@@ -123,6 +136,9 @@ export class KitchenScene extends Phaser.Scene {
         }));
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
+
+      callbacks.onAdd("tickets", () => this.drawTicketSlips()),
+      callbacks.onRemove("tickets", () => this.drawTicketSlips()),
     );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => unsubscribe.forEach((off) => off()));
   }
@@ -156,8 +172,11 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   private interact() {
-    if (document.activeElement instanceof HTMLInputElement) return;
-    if (this.currentInteraction()) this.room.send(Message.Interact);
+    if (document.activeElement instanceof HTMLInputElement || this.registry.get(MODAL_OPEN_KEY)) return;
+    const interaction = this.currentInteraction();
+    if (!interaction) return;
+    if (interaction.kind === "readTickets") this.game.events.emit(OPEN_TICKETS_EVENT);
+    else this.room.send(Message.Interact);
   }
 
   /** Outlines what the local waiter can act on and shows which key to press. */
@@ -173,6 +192,8 @@ export class KitchenScene extends Phaser.Scene {
       if (target?.kind === "customer" && target.id === id) body.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
       else body.setStrokeStyle();
     }
+    if (target?.kind === "rail") this.ticketRail.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.ticketRail.setStrokeStyle();
 
     this.hint.setVisible(!!target);
     if (interaction && target) {
@@ -180,8 +201,11 @@ export class KitchenScene extends Phaser.Scene {
     }
   }
 
-  /** The thing to highlight for an interaction: the customer to hook or serve, or the table to use. */
+  /** The thing to highlight for an interaction: a customer, a table or the ticket rail. */
   private interactionTarget(interaction: Interaction) {
+    if (interaction.kind === "readTickets") {
+      return { kind: "rail", id: "", x: TICKET_RAIL.x, top: TICKET_RAIL.y - TICKET_RAIL.size / 2 };
+    }
     if (interaction.kind !== "seat" && interaction.kind !== "action") {
       const sprite = this.customers.get(interaction.customerId);
       return sprite && { kind: "customer", id: interaction.customerId, x: sprite.body.x, top: sprite.body.y - CUSTOMER_SIZE / 2 - 12 };
@@ -221,8 +245,9 @@ export class KitchenScene extends Phaser.Scene {
 
   private sendInput() {
     const k = this.keys;
-    // Stand still while typing in a React input or while the order dialog is open.
+    // Stand still while typing in a React input or while a popup is open.
     const busy = document.activeElement instanceof HTMLInputElement
+      || !!this.registry.get(MODAL_OPEN_KEY)
       || !!attendedCustomer(this.room.state, this.room.sessionId, "ordering");
     const input: InputState = busy ? NO_INPUT : {
       left: k.left.isDown || k.a.isDown,
@@ -301,6 +326,17 @@ export class KitchenScene extends Phaser.Scene {
     this.customers.get(id)?.body.destroy();
     this.customers.get(id)?.icon.destroy();
     this.customers.delete(id);
+  }
+
+  private drawTicketSlips() {
+    const shown = Math.min(this.room.state.tickets.size, 6);
+    this.ticketSlips.clear();
+    for (let i = 0; i < shown; i++) {
+      const x = TICKET_RAIL.x - TICKET_RAIL.size / 2 - 6 + (i % 2) * 3;
+      const y = TICKET_RAIL.y + TICKET_RAIL.size / 2 - 4 + i * 6;
+      this.ticketSlips.fillStyle(0xfffdf6).fillRect(x, y, 16, 20);
+      this.ticketSlips.lineStyle(1, 0xb9a88f).strokeRect(x, y, 16, 20);
+    }
   }
 
   private addTable(id: string, table: Table) {

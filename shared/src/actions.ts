@@ -3,6 +3,7 @@
 // or a timed action, which completes after `durationMs` unless the player walks out of reach first.
 
 import { isNearCustomer, isNearEntrance, isNearTable, type TableStatus } from "./hall.ts";
+import { isNearTicketRail } from "./kitchen.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState } from "./state.ts";
 
@@ -22,6 +23,8 @@ export type Interaction =
   | { kind: "takeOrder"; customerId: string }
   | { kind: "escort"; customerId: string }
   | { kind: "farewell"; customerId: string }
+  /** Client-only: opens the tickets popup. The server isn't involved until a ticket is thrown away. */
+  | { kind: "readTickets" }
   | { kind: "action"; action: ActionId; tableId: string };
 
 export function interactionLabel(interaction: Interaction) {
@@ -31,6 +34,7 @@ export function interactionLabel(interaction: Interaction) {
     case "takeOrder": return "Prendi l'ordinazione";
     case "escort": return "Accompagna all'uscita";
     case "farewell": return "Saluta il cliente";
+    case "readTickets": return "Leggi le comande";
     case "action": return ACTIONS[interaction.action].label;
   }
 }
@@ -60,9 +64,14 @@ export function availableInteraction(
   position?: { x: number; y: number },
 ): Interaction | null {
   const player = state.players.get(sessionId);
-  if (!player || player.role !== "hall" || player.action) return null;
-  if (attendedCustomer(state, sessionId, "ordering")) return null;
+  if (!player || player.action) return null;
   const at = position ?? player;
+
+  if (player.role === "kitchen") {
+    return isNearTicketRail(at) ? { kind: "readTickets" } : null;
+  }
+
+  if (attendedCustomer(state, sessionId, "ordering")) return null;
 
   const toTable = attendedCustomer(state, sessionId, "following");
   const toExit = attendedCustomer(state, sessionId, "escortedOut");

@@ -11,7 +11,6 @@ import {
   MAX_PLAYERS,
   MENU_ITEMS,
   Message,
-  Order,
   PLAYER_SIZE,
   PLAYER_SPEED,
   Player,
@@ -19,20 +18,24 @@ import {
   ROLE_INFO,
   TABLE_LAYOUT,
   Table,
+  Ticket,
   WORLD,
   attendedCustomer,
   availableInteraction,
   canReachCustomer,
   cleanName,
   isMenuItem,
+  isNearTicketRail,
   isNearTable,
   isRole,
   overlapsTable,
+  overlapsTicketRail,
   seatPosition,
   tableActionFor,
   zoneFor,
   type InputState,
   type CustomerStatus,
+  type DiscardTicketMessage,
   type JoinOptions,
   type PlaceOrderMessage,
   type Role,
@@ -66,7 +69,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private statusEndsAt = new Map<string, number>();
   private nextCustomerAt = 0;
   private customerCount = 0;
-  private orderCount = 0;
+  private ticketCount = 0;
 
   onCreate() {
     this.nextCustomerAt = this.clock.currentTime + FIRST_CUSTOMER_DELAY_MS;
@@ -102,12 +105,12 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
       if (!customer || !isMenuItem(message?.item)) return;
 
-      const order = new Order();
-      order.id = `o${++this.orderCount}`;
-      order.customerId = customer.id;
-      order.tableId = customer.tableId;
-      order.item = message.item;
-      this.state.orders.set(order.id, order);
+      const ticket = new Ticket();
+      ticket.number = ++this.ticketCount;
+      ticket.id = `k${ticket.number}`;
+      ticket.tableId = customer.tableId;
+      ticket.item = message.item;
+      this.state.tickets.set(ticket.id, ticket);
 
       customer.waiterId = "";
       this.setCustomerStatus(customer, "waitingFood");
@@ -116,6 +119,12 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.onMessage(Message.CancelOrder, (client) => {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
       if (customer) this.stopOrdering(customer);
+    });
+
+    this.onMessage(Message.DiscardTicket, (client, message: DiscardTicketMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (player?.role !== "kitchen" || !isNearTicketRail(player)) return;
+      this.state.tickets.delete(String(message?.ticketId));
     });
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
@@ -247,16 +256,17 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     dx /= length;
     dy /= length;
 
-    // One axis at a time, so a player blocked by a table can still slide along it.
+    // One axis at a time, so a player blocked by an obstacle can still slide along it.
     const zone = zoneFor(player.role);
     const half = PLAYER_SIZE / 2;
     const nextX = clamp(player.x + dx * PLAYER_SPEED * dt, zone.minX, zone.maxX);
-    if (!this.hitsTable(nextX, player.y)) player.x = nextX;
+    if (!this.hitsObstacle(nextX, player.y)) player.x = nextX;
     const nextY = clamp(player.y + dy * PLAYER_SPEED * dt, half, WORLD.height - half);
-    if (!this.hitsTable(player.x, nextY)) player.y = nextY;
+    if (!this.hitsObstacle(player.x, nextY)) player.y = nextY;
   }
 
-  private hitsTable(x: number, y: number) {
+  private hitsObstacle(x: number, y: number) {
+    if (overlapsTicketRail({ x, y })) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }
@@ -351,7 +361,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     customer.y += (dy / distance) * step;
   }
 
-  /** Marks the customer as leaving, then removes them (and their order) and schedules the next one. */
+  /** Marks the customer as leaving, then removes them and schedules the next one. Their ticket stays. */
   private sendAway(customer: Customer) {
     customer.status = "leaving";
     customer.waiterId = "";
@@ -363,9 +373,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     this.clock.setTimeout(() => {
       this.state.customers.delete(customer.id);
-      this.state.orders.forEach((order, id) => {
-        if (order.customerId === customer.id) this.state.orders.delete(id);
-      });
       this.nextCustomerAt = this.clock.currentTime + CUSTOMER_TIMING.spawnDelayS * 1000;
     }, CUSTOMER_TIMING.leavingS * 1000);
   }

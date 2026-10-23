@@ -41,20 +41,24 @@ export const Customer = schema({
 }, "Customer");
 export type Customer = SchemaType<typeof Customer>;
 
-/** An order sent by the waiter; what the kitchen will cook. */
-export const Order = schema({
+/**
+ * An order ticket sent by the waiter, waiting on the kitchen's ticket rail.
+ * It's just paper: it outlives the customer and stays until the cook throws it away.
+ */
+export const Ticket = schema({
   id: t.string(),
-  customerId: t.string(),
+  /** Progressive number printed on the ticket. */
+  number: t.number(),
   tableId: t.string(),
   /** What the waiter selected, which may not be what the customer asked for. */
   item: t.string<MenuItemId>(),
-}, "Order");
-export type Order = SchemaType<typeof Order>;
+}, "Ticket");
+export type Ticket = SchemaType<typeof Ticket>;
 
 export const KitchenState = schema({
   players: t.map(Player),
   tables: t.map(Table),
   customers: t.map(Customer),
-  orders: t.map(Order),
+  tickets: t.map(Ticket),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;

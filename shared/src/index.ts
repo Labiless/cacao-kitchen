@@ -1,16 +1,14 @@
 // Values that both the server and the client must agree on.
 // The synced room state (Colyseus Schema) lives in ./state.ts, the dining hall layout and customers
-// in ./hall.ts, what a player can do (timed actions, E interactions) in ./actions.ts, the menu in ./menu.ts.
+// in ./hall.ts, the kitchen layout in ./kitchen.ts, what a player can do (timed actions, E interactions)
+// in ./actions.ts, the menu in ./menu.ts.
 
-import { PLAYER_SIZE, WORLD } from "./world.ts";
+import { PLAYER_SIZE, WALL, WORLD } from "./world.ts";
 import type { MenuItemId } from "./menu.ts";
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
 export const SERVER_PORT = 2567;
-
-/** Vertical wall in the middle of the map: kitchen on the left, dining hall on the right. */
-export const WALL = { x: WORLD.width / 2, thickness: 20 } as const;
 
 export const ROLES = ["kitchen", "hall"] as const;
 export type Role = (typeof ROLES)[number];
@@ -43,7 +41,13 @@ export const Message = {
   PlaceOrder: "placeOrder",
   /** No payload. Closes the order dialog without ordering. */
   CancelOrder: "cancelOrder",
+  /** Payload: DiscardTicketMessage. The cook throws a ticket away. */
+  DiscardTicket: "discardTicket",
 } as const;
+
+export interface DiscardTicketMessage {
+  ticketId: string;
+}
 
 export interface PlaceOrderMessage {
   item: MenuItemId;
@@ -72,5 +76,6 @@ export function cleanName(raw: unknown) {
 export * from "./world.ts";
 export * from "./state.ts";
 export * from "./hall.ts";
+export * from "./kitchen.ts";
 export * from "./actions.ts";
 export * from "./menu.ts";

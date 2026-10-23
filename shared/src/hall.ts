@@ -17,8 +17,12 @@ export const TABLE_STATUS_INFO: Record<TableStatus, { label: string; color: stri
 
 /** Where tables go when a room is created. */
 export const TABLE_LAYOUT = [
-  { id: "t1", x: 640, y: 180 },
+  { id: "t1", label: "Tavolo 1", x: 640, y: 180 },
 ] as const;
+
+export function tableLabel(tableId: string) {
+  return TABLE_LAYOUT.find((table) => table.id === tableId)?.label ?? tableId;
+}
 
 /** Doormat where customers come in, wait to be led to a table, and are shown out. */
 export const ENTRANCE = { x: WORLD.width - 40, y: WORLD.height - 50, size: 70 } as const;
