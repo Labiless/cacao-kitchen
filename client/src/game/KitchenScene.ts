@@ -30,7 +30,9 @@ export class KitchenScene extends Phaser.Scene {
     }) as typeof this.keys;
 
     const callbacks = Callbacks.get(this.room);
-    const unsubscribe = [
+    // Declared up front: onAdd fires synchronously for players already in the room.
+    const unsubscribe: Array<() => void> = [];
+    unsubscribe.push(
       callbacks.onAdd("players", (player, sessionId) => {
         this.addPlayer(sessionId, player);
         unsubscribe.push(callbacks.onChange(player, () => {
@@ -39,7 +41,7 @@ export class KitchenScene extends Phaser.Scene {
         }));
       }),
       callbacks.onRemove("players", (_player, sessionId) => this.removePlayer(sessionId)),
-    ];
+    );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => unsubscribe.forEach((off) => off()));
   }
 
