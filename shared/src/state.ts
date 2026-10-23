@@ -17,6 +17,8 @@ export const Player = schema({
   actionTarget: t.string().default(""),
   /** What the player is carrying (one thing at a time), or "" when their hands are empty. */
   holding: t.string<HeldItem | "">().default(""),
+  /** Freshness of the dish they carry: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
+  freshness: t.number().default(0),
 }, "Player");
 export type Player = SchemaType<typeof Player>;
 
@@ -70,7 +72,16 @@ export const Stove = schema({
   status: t.string<StoveStatus>().default("idle"),
   /** What's cooking or ready to be picked up; "" when idle. */
   dish: t.string<MenuItemId | "">().default(""),
+  /** Freshness of the ready dish: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
+  freshness: t.number().default(0),
 }, "Stove");
+/** A dish waiting on the pass. */
+export const PassDish = schema({
+  dish: t.string<MenuItemId>(),
+  /** 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
+  freshness: t.number(),
+}, "PassDish");
+export type PassDish = SchemaType<typeof PassDish>;
 export type Stove = SchemaType<typeof Stove>;
 
 export const KitchenState = schema({
@@ -80,7 +91,7 @@ export const KitchenState = schema({
   tickets: t.map(Ticket),
   stoves: t.map(Stove),
   /** Dishes waiting on the pass, oldest first. */
-  pass: t.array("string"),
+  pass: t.array(PassDish),
   /** Ids of the customers queuing at the till, front of the queue first. */
   queue: t.array("string"),
   /** The restaurant's money, in cents. */

@@ -46,6 +46,9 @@ import {
   EQUIPMENT,
   STARTING_STOVES,
   Stove,
+  PassDish,
+  PASS,
+  DISH_FRESH_S,
   freeTicketSlot,
   isNearTicketSlot,
   isNearRegister,
@@ -61,6 +64,7 @@ import {
   type CookMessage,
   type CustomerStatus,
   type BuyEquipmentMessage,
+  type DishSpoiledMessage,
   type BuyIngredientMessage,
   type DiscardTicketMessage,
   type TakeIngredientMessage,
@@ -300,21 +304,29 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       case "takeDish": {
         const stove = this.state.stoves.get(interaction.stoveId)!;
         player.holding = interaction.dish;
+        player.freshness = stove.freshness;
         stove.status = "idle";
         stove.dish = "";
+        stove.freshness = 0;
         break;
       }
-      case "placeOnPass":
-        this.state.pass.push(interaction.dish);
+      case "placeOnPass": {
+        const onPass = new PassDish();
+        onPass.dish = interaction.dish;
+        onPass.freshness = player.freshness;
+        this.state.pass.push(onPass);
         player.holding = "";
+        player.freshness = 0;
         break;
+      }
       case "takeFromPass":
-        this.state.pass.shift();
+        player.freshness = this.state.pass.shift()!.freshness;
         player.holding = interaction.dish;
         break;
       case "serve": {
         const customer = this.state.customers.get(interaction.customerId)!;
         player.holding = "";
+        player.freshness = 0;
         if (interaction.dish === customer.wants) {
           customer.bill += MENU[interaction.dish].priceCents;
           this.setCustomerStatus(customer, "eating");
@@ -395,8 +407,45 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     for (const stove of this.state.stoves.values()) {
       if (stove.status === "cooking" && this.clock.currentTime >= (this.stoveReadyAt.get(stove.id) ?? 0)) {
         stove.status = "ready";
+        stove.freshness = 1;
       }
     }
+    this.updateFreshness(dt);
+  }
+
+  /** Cooked dishes go stale until the waiter picks them up; stale ones are thrown away. */
+  private updateFreshness(dt: number) {
+    const loss = dt / DISH_FRESH_S;
+
+    for (const stove of this.state.stoves.values()) {
+      if (stove.status !== "ready") continue;
+      stove.freshness = Math.max(0, stove.freshness - loss);
+      if (stove.freshness > 0) continue;
+      stove.status = "idle";
+      stove.dish = "";
+      this.dishSpoiled(stove.x, stove.y, "kitchen");
+    }
+
+    // Only in the cook's hands: once the waiter has it, the clock stops.
+    for (const player of this.state.players.values()) {
+      if (player.role !== "kitchen" || !isMenuItem(player.holding)) continue;
+      player.freshness = Math.max(0, player.freshness - loss);
+      if (player.freshness > 0) continue;
+      player.holding = "";
+      this.dishSpoiled(player.x, player.y, "kitchen");
+    }
+
+    for (let i = this.state.pass.length - 1; i >= 0; i--) {
+      const onPass = this.state.pass[i];
+      onPass.freshness = Math.max(0, onPass.freshness - loss);
+      if (onPass.freshness > 0) continue;
+      this.state.pass.splice(i, 1);
+      this.dishSpoiled(PASS.x, PASS.y, "everyone");
+    }
+  }
+
+  private dishSpoiled(x: number, y: number, seenBy: DishSpoiledMessage["seenBy"]) {
+    this.broadcast(Message.DishSpoiled, { x, y, seenBy } satisfies DishSpoiledMessage);
   }
 
   private movePlayer(player: Player, input: InputState, dt: number) {

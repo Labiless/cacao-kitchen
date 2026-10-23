@@ -50,6 +50,8 @@ export const Message = {
   Cook: "cook",
   /** Payload: BuyEquipmentMessage. Sent when the waiter places what they bought on the computer. */
   BuyEquipment: "buyEquipment",
+  /** Server → clients. Payload: DishSpoiledMessage. A dish went bad and was thrown away. */
+  DishSpoiled: "dishSpoiled",
   /** Payload: BuyIngredientMessage. Sent from the phone popup. */
   BuyIngredient: "buyIngredient",
 } as const;
@@ -61,6 +63,14 @@ export interface BuyIngredientMessage {
 export interface CookMessage {
   stoveId: string;
   dish: MenuItemId;
+}
+
+export interface DishSpoiledMessage {
+  /** Where it was thrown away. */
+  x: number;
+  y: number;
+  /** Who gets to see it: the kitchen for the stove and the cook's hands, everyone for the pass. */
+  seenBy: Role | "everyone";
 }
 
 export interface BuyEquipmentMessage {

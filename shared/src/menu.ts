@@ -2,10 +2,10 @@
 // Money is always in euro cents (integers), so sums never pick up rounding errors.
 
 export const MENU = {
-  chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda", priceCents: 350 },
-  tea: { label: "Tè caldo", emoji: "🍵", spoken: "un tè caldo", priceCents: 250 },
-  pancakes: { label: "Pancake", emoji: "🥞", spoken: "dei pancake", priceCents: 400 },
-  egg: { label: "Uovo al tegamino", emoji: "🍳", spoken: "un uovo al tegamino", priceCents: 300 },
+  chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda", priceCents: 500 },
+  tea: { label: "Tè caldo", emoji: "🍵", spoken: "un tè caldo", priceCents: 400 },
+  pancakes: { label: "Pancake", emoji: "🥞", spoken: "dei pancake", priceCents: 600 },
+  egg: { label: "Uovo al tegamino", emoji: "🍳", spoken: "un uovo al tegamino", priceCents: 450 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];

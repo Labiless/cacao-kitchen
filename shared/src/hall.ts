@@ -28,6 +28,7 @@ export const TABLE_LAYOUT = [
   { id: "t2", label: "Tavolo 2", x: 620, y: 170 },
   { id: "t3", label: "Tavolo 3", x: 460, y: 340 },
   { id: "t4", label: "Tavolo 4", x: 620, y: 340 },
+  { id: "t5", label: "Tavolo 5", x: 540, y: 470 },
 ] as const;
 
 export function tableLabel(tableId: string) {

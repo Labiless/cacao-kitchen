@@ -37,6 +37,7 @@ import {
   type CustomerStatus,
   type InputState,
   type Interaction,
+  type DishSpoiledMessage,
   type EquipmentId,
   type Player,
   type Role,
@@ -97,6 +98,11 @@ export const OPEN_POPUP_EVENT = "openPopup";
 export const START_PLACEMENT_EVENT = "startPlacement";
 /** Registry key React sets while one of its popups is open, so the scene ignores movement and E. */
 export const MODAL_OPEN_KEY = "modalOpen";
+
+/** Green while there's plenty left, then yellow, then red: for patience and freshness bars. */
+function levelColor(fraction: number) {
+  return fraction > 0.5 ? 0x7bd389 : fraction > 0.25 ? 0xf2c14e : 0xe05a47;
+}
 
 /** Fraction of the remaining distance covered per frame at 60 fps. */
 const SMOOTHING = 0.3;
@@ -222,6 +228,8 @@ export class KitchenScene extends Phaser.Scene {
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
 
+      this.room.onMessage(Message.DishSpoiled, (message: DishSpoiledMessage) => this.showDishSpoiled(message)),
+
       callbacks.listen("money", (money, previous) => {
         if (previous !== undefined && money > previous && this.sees("hall")) this.showMoneyIn(money - previous);
       }),
@@ -275,6 +283,7 @@ export class KitchenScene extends Phaser.Scene {
     this.drawInteractionHint();
     this.drawActionProgress();
     this.drawPatience();
+    this.drawFreshness();
   }
 
   /**
@@ -439,15 +448,14 @@ export class KitchenScene extends Phaser.Scene {
       const customer = this.room.state.customers.get(id);
       if (!customer || !CUSTOMER_TIMING.patienceS[customer.status]) continue;
 
-      const color = customer.patience > 0.5 ? 0x7bd389 : customer.patience > 0.25 ? 0xf2c14e : 0xe05a47;
-      this.drawBar(body.x, body.y - CUSTOMER_SIZE / 2 - 8, CUSTOMER_SIZE + 6, customer.patience, color);
+      this.drawBar(body.x, body.y - CUSTOMER_SIZE / 2 - 8, CUSTOMER_SIZE + 6, customer.patience, levelColor(customer.patience));
     }
   }
 
-  private drawBar(centerX: number, y: number, width: number, progress: number, color: number) {
+  private drawBar(centerX: number, y: number, width: number, progress: number, color: number, height = 8) {
     const x = centerX - width / 2;
-    this.bars.fillStyle(0x3b2a1e, 0.8).fillRect(x, y - 4, width, 8);
-    this.bars.fillStyle(color).fillRect(x + 1, y - 3, (width - 2) * progress, 6);
+    this.bars.fillStyle(0x3b2a1e, 0.8).fillRect(x, y - height / 2, width, height);
+    this.bars.fillStyle(color).fillRect(x + 1, y - height / 2 + 1, (width - 2) * progress, height - 2);
   }
 
   private sendInput() {
@@ -501,7 +509,7 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   private refreshPass() {
-    const dishes = [...this.room.state.pass];
+    const dishes = [...this.room.state.pass].map((onPass) => onPass.dish);
     const key = dishes.join(",");
     if (key === this.shownPass) return;
     this.shownPass = key;
@@ -509,6 +517,40 @@ export class KitchenScene extends Phaser.Scene {
       const dish = dishes[i];
       icon.setText(isMenuItem(dish) ? MENU[dish].emoji : "");
     });
+  }
+
+  /**
+   * How long cooked dishes have left before they're thrown away: on the pass for everyone, on the
+   * stoves and in the cook's hands only for the cook.
+   */
+  private drawFreshness() {
+    [...this.room.state.pass].forEach((onPass, i) => {
+      const icon = this.passDishes[i];
+      if (icon) this.drawBar(icon.x, icon.y + 8, 22, onPass.freshness, levelColor(onPass.freshness), 4);
+    });
+    if (!this.sees("kitchen")) return;
+
+    for (const stove of this.room.state.stoves.values()) {
+      if (stove.status === "ready") {
+        this.drawBar(stove.x, stove.y - STOVE_SIZE / 2 - 8, STOVE_SIZE + 6, stove.freshness, levelColor(stove.freshness));
+      }
+    }
+    for (const [sessionId, { body }] of this.sprites) {
+      const player = this.room.state.players.get(sessionId);
+      if (player?.role === "kitchen" && isMenuItem(player.holding)) {
+        this.drawBar(body.x, body.y + PLAYER_SIZE / 2 + 6, PLAYER_SIZE, player.freshness, levelColor(player.freshness), 5);
+      }
+    }
+  }
+
+  /** "🗑️ Buttato" where a dish went bad. */
+  private showDishSpoiled({ x, y, seenBy }: DishSpoiledMessage) {
+    if (seenBy !== "everyone" && !this.sees(seenBy)) return;
+    const text = this.add
+      .text(x, y, "🗑️ Buttato", { ...TEXT_STYLE, fontSize: "14px", fontStyle: "bold", color: "#c0392b" })
+      .setOrigin(0.5)
+      .setDepth(Depth.Label);
+    this.tweens.add({ targets: text, y: y - 30, alpha: 0, duration: 1600, onComplete: () => text.destroy() });
   }
 
   private addStove(id: string, stove: Stove) {

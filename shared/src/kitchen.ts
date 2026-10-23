@@ -70,6 +70,12 @@ export const PASS = { x: WALL.x, y: 470, width: 64, height: 56 } as const;
 /** How many dishes fit on the pass. */
 export const PASS_CAPACITY = 3;
 
+/**
+ * Seconds a cooked dish stays good, from the moment it's ready until the waiter picks it up from the
+ * pass (the clock stops in the waiter's hands). When it runs out the dish is thrown away.
+ */
+export const DISH_FRESH_S = 25;
+
 export const STOVE_STATUSES = ["idle", "cooking", "ready"] as const;
 export type StoveStatus = (typeof STOVE_STATUSES)[number];
 

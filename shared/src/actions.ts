@@ -19,8 +19,8 @@ import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState, Stove } from "./state.ts";
 
 export const ACTIONS = {
-  cleanTable: { label: "Pulisci tavolo", durationMs: 1200 },
-  checkout: { label: "Incassa", durationMs: 2000 },
+  cleanTable: { label: "Pulisci tavolo", durationMs: 500 },
+  checkout: { label: "Incassa", durationMs: 800 },
 } as const;
 export type ActionId = keyof typeof ACTIONS;
 
@@ -128,7 +128,7 @@ function passInteraction(state: KitchenState, holding: string): Interaction | nu
       ? { kind: "placeOnPass", dish: holding }
       : { kind: "blocked", station: "pass", reason: "Bancone pieno" };
   }
-  const oldest = state.pass[0];
+  const oldest = state.pass[0]?.dish;
   if (!holding && isMenuItem(oldest)) return { kind: "takeFromPass", dish: oldest };
   return null;
 }
