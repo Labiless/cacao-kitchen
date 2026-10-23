@@ -1,15 +1,12 @@
 // Values that both the server and the client must agree on.
-// The synced room state (Colyseus Schema) lives in ./state.ts, the dining hall layout in ./hall.ts,
-// timed actions in ./actions.ts.
+// The synced room state (Colyseus Schema) lives in ./state.ts, the dining hall layout and customers
+// in ./hall.ts, what a player can do (timed actions, E interactions) in ./actions.ts.
+
+import { PLAYER_SIZE, WORLD } from "./world.ts";
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
 export const SERVER_PORT = 2567;
-
-export const WORLD = { width: 800, height: 600 } as const;
-export const PLAYER_SIZE = 40;
-/** Pixels per second. */
-export const PLAYER_SPEED = 220;
 
 /** Vertical wall in the middle of the map: kitchen on the left, dining hall on the right. */
 export const WALL = { x: WORLD.width / 2, thickness: 20 } as const;
@@ -39,13 +36,9 @@ export const MAX_NAME_LENGTH = 16;
 export const Message = {
   Input: "input",
   SetName: "setName",
-  /** Payload: InteractMessage. The server picks the action from the target's current state. */
+  /** No payload: the server works out what pressing E does (see availableInteraction). */
   Interact: "interact",
 } as const;
-
-export interface InteractMessage {
-  tableId: string;
-}
 
 /** Keys currently held by a player; sent to the server whenever it changes. */
 export interface InputState {
@@ -67,6 +60,7 @@ export function cleanName(raw: unknown) {
   return String(raw ?? "").trim().slice(0, MAX_NAME_LENGTH);
 }
 
+export * from "./world.ts";
 export * from "./state.ts";
 export * from "./hall.ts";
 export * from "./actions.ts";

@@ -1,6 +1,12 @@
 import { Room, type Client } from "colyseus";
 import {
   ACTIONS,
+  CUSTOMER_SIZE,
+  CUSTOMER_SPEED,
+  CUSTOMER_TIMING,
+  Customer,
+  ENTRANCE,
+  FOLLOW_GAP,
   KitchenState,
   MAX_PLAYERS,
   Message,
@@ -12,39 +18,47 @@ import {
   TABLE_LAYOUT,
   Table,
   WORLD,
+  availableInteraction,
   cleanName,
   isNearTable,
   isRole,
   overlapsTable,
+  seatPosition,
   tableActionFor,
   zoneFor,
   type InputState,
-  type InteractMessage,
   type JoinOptions,
   type Role,
 } from "@cacao/shared";
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
-/** Temporary: with no customers yet, a cleaned table gets dirty again on its own so cleaning can be tested. */
-const REDIRTY_AFTER_MS = 6000;
+/** Delay before the very first customer, so players have a moment to look around. */
+const FIRST_CUSTOMER_DELAY_MS = 3000;
 
 export class KitchenRoom extends Room<{ state: KitchenState }> {
   maxClients = MAX_PLAYERS;
   state = new KitchenState();
 
-  /** Latest input per sessionId. Server-only: not part of the synced state. */
+  // Server-only bookkeeping, not part of the synced state. Times are in room clock milliseconds.
+  /** Latest input per sessionId. */
   private heldKeys = new Map<string, InputState>();
-  /** When each player's current action completes, in room clock time. Server-only. */
+  /** When each player's current action completes. */
   private actionEndsAt = new Map<string, number>();
+  /** When each seated customer gets up and leaves. */
+  private customerLeavesAt = new Map<string, number>();
+  private nextCustomerAt = 0;
+  private customerCount = 0;
 
   onCreate() {
+    this.nextCustomerAt = this.clock.currentTime + FIRST_CUSTOMER_DELAY_MS;
+
     for (const { id, x, y } of TABLE_LAYOUT) {
       const table = new Table();
       table.id = id;
       table.x = x;
       table.y = y;
-      table.status = "dirty";
+      table.status = "free";
       this.state.tables.set(id, table);
     }
 
@@ -64,9 +78,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       if (player && cleaned) player.name = cleaned;
     });
 
-    this.onMessage(Message.Interact, (client, message: InteractMessage) => {
-      this.startTableAction(client.sessionId, String(message?.tableId));
-    });
+    this.onMessage(Message.Interact, (client) => this.interact(client.sessionId));
 
     this.setSimulationInterval((deltaMs) => this.update(deltaMs / 1000));
   }
@@ -95,23 +107,44 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   onLeave(client: Client) {
+    // A customer they were leading is released in updateCustomers().
     this.state.players.delete(client.sessionId);
     this.heldKeys.delete(client.sessionId);
     this.actionEndsAt.delete(client.sessionId);
   }
 
-  private startTableAction(sessionId: string, tableId: string) {
+  /** E was pressed: do whatever the shared rules say is possible from where the player stands. */
+  private interact(sessionId: string) {
     const player = this.state.players.get(sessionId);
-    const table = this.state.tables.get(tableId);
-    if (!player || !table || player.role !== "hall" || player.action) return;
-    if (!isNearTable(player, table)) return;
+    const interaction = availableInteraction(this.state, sessionId);
+    if (!player || !interaction) return;
 
-    const action = tableActionFor(table.status);
-    if (!action) return;
-
-    player.action = action;
-    player.actionTarget = tableId;
-    this.actionEndsAt.set(sessionId, this.clock.currentTime + ACTIONS[action].durationMs);
+    switch (interaction.kind) {
+      case "lead": {
+        const customer = this.state.customers.get(interaction.customerId)!;
+        customer.status = "following";
+        customer.leaderId = sessionId;
+        break;
+      }
+      case "seat": {
+        const customer = this.state.customers.get(interaction.customerId)!;
+        const table = this.state.tables.get(interaction.tableId)!;
+        const seat = seatPosition(table);
+        customer.status = "seated";
+        customer.leaderId = "";
+        customer.tableId = table.id;
+        customer.x = seat.x;
+        customer.y = seat.y;
+        table.status = "occupied";
+        this.customerLeavesAt.set(customer.id, this.clock.currentTime + CUSTOMER_TIMING.seatedS * 1000);
+        break;
+      }
+      case "action":
+        player.action = interaction.action;
+        player.actionTarget = interaction.tableId;
+        this.actionEndsAt.set(sessionId, this.clock.currentTime + ACTIONS[interaction.action].durationMs);
+        break;
+    }
   }
 
   /** Completes the player's action when its time is up, or cancels it if it's no longer possible. */
@@ -129,7 +162,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     switch (player.action) {
       case "cleanTable":
         table.status = "free";
-        this.clock.setTimeout(() => (table.status = "dirty"), REDIRTY_AFTER_MS);
         break;
     }
     this.clearAction(sessionId, player);
@@ -146,6 +178,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.movePlayer(player, this.heldKeys.get(sessionId) ?? NO_INPUT, dt);
       this.updateAction(sessionId, player);
     });
+    this.updateCustomers(dt);
   }
 
   private movePlayer(player: Player, input: InputState, dt: number) {
@@ -172,6 +205,78 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       if (overlapsTable({ x, y }, table)) return true;
     }
     return false;
+  }
+
+  private updateCustomers(dt: number) {
+    const now = this.clock.currentTime;
+    // One customer at a time for now, and only while someone can serve them.
+    const hasWaiter = [...this.state.players.values()].some((p) => p.role === "hall");
+    if (this.state.customers.size === 0 && hasWaiter && now >= this.nextCustomerAt) {
+      this.spawnCustomer();
+    }
+
+    this.state.customers.forEach((customer) => {
+      switch (customer.status) {
+        case "waiting":
+          customer.patience = Math.max(0, customer.patience - dt / CUSTOMER_TIMING.patienceS);
+          if (customer.patience === 0) this.sendAway(customer);
+          break;
+
+        case "following": {
+          const leader = this.state.players.get(customer.leaderId);
+          if (leader) {
+            this.follow(customer, leader, dt);
+          } else {
+            // Their waiter left the room: they stop and wait where they are.
+            customer.status = "waiting";
+            customer.leaderId = "";
+          }
+          break;
+        }
+
+        case "seated":
+          if (now >= (this.customerLeavesAt.get(customer.id) ?? 0)) {
+            const table = this.state.tables.get(customer.tableId);
+            if (table) table.status = "dirty";
+            this.sendAway(customer);
+          }
+          break;
+      }
+    });
+  }
+
+  private spawnCustomer() {
+    const customer = new Customer();
+    customer.id = `c${++this.customerCount}`;
+    customer.x = ENTRANCE.x;
+    customer.y = ENTRANCE.y;
+    customer.status = "waiting";
+    customer.patience = 1;
+    this.state.customers.set(customer.id, customer);
+  }
+
+  /** Walks towards the leader, stopping just behind them. */
+  private follow(customer: Customer, leader: Player, dt: number) {
+    const dx = leader.x - customer.x;
+    const dy = leader.y - customer.y;
+    const distance = Math.hypot(dx, dy);
+    const gap = (PLAYER_SIZE + CUSTOMER_SIZE) / 2 + FOLLOW_GAP;
+    if (distance <= gap) return;
+
+    const step = Math.min(distance - gap, CUSTOMER_SPEED * dt);
+    customer.x += (dx / distance) * step;
+    customer.y += (dy / distance) * step;
+  }
+
+  /** Marks the customer as leaving, then removes them and schedules the next one. */
+  private sendAway(customer: Customer) {
+    customer.status = "leaving";
+    customer.leaderId = "";
+    this.customerLeavesAt.delete(customer.id);
+    this.clock.setTimeout(() => {
+      this.state.customers.delete(customer.id);
+      this.nextCustomerAt = this.clock.currentTime + CUSTOMER_TIMING.spawnDelayS * 1000;
+    }, CUSTOMER_TIMING.leavingS * 1000);
   }
 }
 

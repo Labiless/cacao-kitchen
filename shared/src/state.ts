@@ -1,6 +1,6 @@
 import { schema, t, type SchemaType } from "@colyseus/schema";
 import type { Role } from "./index.ts";
-import type { TableStatus } from "./hall.ts";
+import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
 
 export const Player = schema({
@@ -24,8 +24,23 @@ export const Table = schema({
 }, "Table");
 export type Table = SchemaType<typeof Table>;
 
+export const Customer = schema({
+  id: t.string(),
+  x: t.number(),
+  y: t.number(),
+  status: t.string<CustomerStatus>(),
+  /** 1 = just arrived, 0 = out of patience. Only drains while waiting at the entrance. */
+  patience: t.number(),
+  /** sessionId of the waiter leading them, while following. */
+  leaderId: t.string().default(""),
+  /** Table they sit at, while seated. */
+  tableId: t.string().default(""),
+}, "Customer");
+export type Customer = SchemaType<typeof Customer>;
+
 export const KitchenState = schema({
   players: t.map(Player),
   tables: t.map(Table),
+  customers: t.map(Customer),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;
