@@ -46,6 +46,8 @@ export const Message = {
   DiscardTicket: "discardTicket",
   /** Payload: TakeIngredientMessage. Sent from the fridge popup. */
   TakeIngredient: "takeIngredient",
+  /** Payload: TakeIngredientMessage. Puts one carried ingredient back, from the fridge popup. */
+  PutBackIngredient: "putBackIngredient",
   /** Payload: CookMessage. Sent from the stove popup. */
   Cook: "cook",
   /** Payload: BuyEquipmentMessage. Sent when the waiter places what they bought on the computer. */

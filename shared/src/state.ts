@@ -2,7 +2,7 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 import type { Role } from "./index.ts";
 import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
-import type { HeldItem, MenuItemId } from "./menu.ts";
+import type { MenuItemId } from "./menu.ts";
 import type { StoveStatus } from "./kitchen.ts";
 
 export const Player = schema({
@@ -15,8 +15,8 @@ export const Player = schema({
   action: t.string<ActionId | "">().default(""),
   /** Id of the table the action is performed on. */
   actionTarget: t.string().default(""),
-  /** What the player is carrying (one thing at a time), or "" when their hands are empty. */
-  holding: t.string<HeldItem | "">().default(""),
+  /** What the player carries (HeldItem ids): one dish, or up to MAX_HELD_INGREDIENTS ingredients. */
+  holding: t.array("string"),
   /** Freshness of the dish they carry: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
   freshness: t.number().default(0),
 }, "Player");

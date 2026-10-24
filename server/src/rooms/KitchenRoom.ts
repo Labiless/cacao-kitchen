@@ -34,6 +34,9 @@ import {
   INGREDIENT_IDS,
   STARTING_MONEY_CENTS,
   STARTING_RECIPES,
+  MAX_HELD_INGREDIENTS,
+  heldDish,
+  ingredientsAfterCooking,
   isIngredient,
   isMenuItem,
   isNearFridge,
@@ -172,11 +175,21 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.onMessage(Message.TakeIngredient, (client, message: TakeIngredientMessage) => {
       const player = this.state.players.get(client.sessionId);
       const ingredient = message?.ingredient;
-      if (player?.role !== "kitchen" || player.holding || !isNearFridge(player) || !isIngredient(ingredient)) return;
+      if (player?.role !== "kitchen" || !isNearFridge(player) || !isIngredient(ingredient)) return;
+      // Hands: no dish, and room for one more ingredient.
+      if (heldDish(player.holding) || player.holding.length >= MAX_HELD_INGREDIENTS) return;
       const stock = this.state.fridge.get(ingredient) ?? 0;
       if (stock <= 0) return;
       this.state.fridge.set(ingredient, stock - 1);
-      player.holding = ingredient;
+      player.holding.push(ingredient);
+    });
+
+    this.onMessage(Message.PutBackIngredient, (client, message: TakeIngredientMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      const index = player?.holding.indexOf(String(message?.ingredient)) ?? -1;
+      if (player?.role !== "kitchen" || !isNearFridge(player) || index < 0) return;
+      const [ingredient] = player.holding.splice(index, 1);
+      this.state.fridge.set(ingredient, (this.state.fridge.get(ingredient) ?? 0) + 1);
     });
 
     this.onMessage(Message.BuyIngredient, (client, message: BuyIngredientMessage) => {
@@ -197,9 +210,12 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         ? RECIPES[message.dish]
         : null;
       if (player?.role !== "kitchen" || !recipe || !stove || !isNearStove(player, stove)) return;
-      if (stove.status !== "idle" || player.holding !== recipe.ingredient) return;
+      const leftover = ingredientsAfterCooking(message.dish, player.holding);
+      if (stove.status !== "idle" || !leftover) return;
 
-      player.holding = "";
+      // The recipe's ingredients go on the stove; anything else stays in hand.
+      player.holding.clear();
+      player.holding.push(...leftover);
       stove.status = "cooking";
       stove.dish = message.dish;
       this.stoveReadyAt.set(stove.id, this.clock.currentTime + recipe.cookMs);
@@ -309,15 +325,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         this.setCustomerStatus(customer, "readingMenu");
         break;
       }
-      case "putBack":
-        if (isIngredient(player.holding)) {
-          this.state.fridge.set(player.holding, (this.state.fridge.get(player.holding) ?? 0) + 1);
-        }
-        player.holding = "";
-        break;
       case "takeDish": {
         const stove = this.state.stoves.get(interaction.stoveId)!;
-        player.holding = interaction.dish;
+        player.holding.push(interaction.dish);
         player.freshness = stove.freshness;
         stove.status = "idle";
         stove.dish = "";
@@ -329,17 +339,17 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         onPass.dish = interaction.dish;
         onPass.freshness = player.freshness;
         this.state.pass.push(onPass);
-        player.holding = "";
+        player.holding.clear();
         player.freshness = 0;
         break;
       }
       case "takeFromPass":
         player.freshness = this.state.pass.shift()!.freshness;
-        player.holding = interaction.dish;
+        player.holding.push(interaction.dish);
         break;
       case "serve": {
         const customer = this.state.customers.get(interaction.customerId)!;
-        player.holding = "";
+        player.holding.clear();
         player.freshness = 0;
         if (interaction.dish === customer.wants) {
           customer.bill += MENU[interaction.dish].priceCents;
@@ -443,10 +453,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
     // Only in the cook's hands: once the waiter has it, the clock stops.
     for (const player of this.state.players.values()) {
-      if (player.role !== "kitchen" || !isMenuItem(player.holding)) continue;
+      if (player.role !== "kitchen" || !heldDish(player.holding)) continue;
       player.freshness = Math.max(0, player.freshness - loss);
       if (player.freshness > 0) continue;
-      player.holding = "";
+      player.holding.clear();
       this.dishSpoiled(player.x, player.y, "kitchen");
     }
 

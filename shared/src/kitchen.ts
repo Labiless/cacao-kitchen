@@ -14,7 +14,7 @@ import {
 import type { KitchenState } from "./state.ts";
 
 /** How many tickets fit on the kitchen wall. When it's full, the waiter can't take new orders. */
-export const MAX_TICKETS = 4;
+export const MAX_TICKETS = 3;
 export const TICKET_SLOT_SIZE = 28;
 const TICKET_SLOT_SPACING = 40;
 

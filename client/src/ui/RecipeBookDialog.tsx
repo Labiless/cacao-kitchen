@@ -45,7 +45,7 @@ export function RecipeBookDialog({ room, onClose }: Props) {
         <ul className="shop-list">
           {MENU_ITEMS.map((id) => {
             const { label, emoji, priceCents } = MENU[id];
-            const { ingredient, cookMs, unlockPriceCents } = RECIPES[id];
+            const { ingredients, cookMs, unlockPriceCents } = RECIPES[id];
             const known = unlocked.includes(id);
             return (
               <li key={id}>
@@ -53,7 +53,8 @@ export function RecipeBookDialog({ room, onClose }: Props) {
                 <span className="shop-item">
                   {label}
                   <small className="recipe">
-                    {INGREDIENTS[ingredient].emoji} {INGREDIENTS[ingredient].label} · {cookMs / 1000}s · vendi a {formatMoney(priceCents)}
+                    {ingredients.map((i) => `${INGREDIENTS[i].emoji} ${INGREDIENTS[i].label}`).join(" + ")}
+                    {` · ${cookMs / 1000}s · vendi a ${formatMoney(priceCents)}`}
                   </small>
                 </span>
                 {known || unlockPriceCents === undefined ? (

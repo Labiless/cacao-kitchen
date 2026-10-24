@@ -4,8 +4,9 @@ import {
   MENU,
   Message,
   RECIPES,
-  type CookMessage,
+  ingredientsAfterCooking,
   unlockedMenu,
+  type CookMessage,
   type MenuItemId,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
@@ -18,9 +19,10 @@ interface Props {
 
 /** The cook picks what to make with the ingredient in their hands. */
 export function StoveDialog({ room, stoveId, onClose }: Props) {
-  const holding = room.state.players.get(room.sessionId)?.holding;
+  const holding = [...(room.state.players.get(room.sessionId)?.holding ?? [])];
   const [selected, setSelected] = useState<MenuItemId | null>(null);
-  const canCook = (dish: MenuItemId) => RECIPES[dish].ingredient === holding;
+  /** Possible when everything the recipe needs is in hand. */
+  const canCook = (dish: MenuItemId) => ingredientsAfterCooking(dish, holding) !== null;
 
   function cook() {
     if (!selected || !canCook(selected)) return;
@@ -58,7 +60,8 @@ export function StoveDialog({ room, stoveId, onClose }: Props) {
                 <span>
                   {MENU[id].label}
                   <small className="recipe">
-                    {INGREDIENTS[recipe.ingredient].emoji} {INGREDIENTS[recipe.ingredient].label} · {recipe.cookMs / 1000}s
+                    {recipe.ingredients.map((id) => `${INGREDIENTS[id].emoji} ${INGREDIENTS[id].label}`).join(" + ")}
+                    {` · ${recipe.cookMs / 1000}s`}
                   </small>
                 </span>
               </button>

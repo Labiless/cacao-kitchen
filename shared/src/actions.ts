@@ -21,7 +21,8 @@ import {
   MENU_ITEMS,
   RECIPES,
   formatMoney,
-  isIngredient,
+  heldDish,
+  heldIngredients,
   isMenuItem,
   type IngredientId,
   type MenuItemId,
@@ -48,9 +49,8 @@ export type Interaction =
   | { kind: "takeOrder"; customerId: string }
   /** Client-only: opens the ticket popup. The server isn't involved until the ticket is thrown away. */
   | { kind: "readTicket"; ticketId: string }
-  /** Client-only: opens the fridge popup. The server is involved once an ingredient is picked. */
+  /** Client-only: opens the fridge popup, to take or put back ingredients. */
   | { kind: "openFridge" }
-  | { kind: "putBack" }
   /** Client-only: opens the phone popup. The server is involved once something is bought. */
   | { kind: "openPhone" }
   /** Client-only: opens the stove popup. The server is involved once a dish is picked. */
@@ -76,7 +76,6 @@ export function interactionLabel(interaction: Interaction) {
     case "takeOrder": return "Prendi l'ordinazione";
     case "readTicket": return "Leggi la comanda";
     case "openFridge": return "Apri il frigo";
-    case "putBack": return "Rimetti in frigo";
     case "openStove": return "Usa il fornello";
     case "openPhone": return "Usa il telefono";
     case "openComputer": return "Usa il computer";
@@ -121,7 +120,7 @@ export function unlockedMenu(state: KitchenState): MenuItemId[] {
 
 /** Ingredients of the unlocked recipes: the only ones that can be ordered on the phone. */
 export function unlockedIngredients(state: KitchenState): IngredientId[] {
-  return INGREDIENT_IDS.filter((id) => unlockedMenu(state).some((dish) => RECIPES[dish].ingredient === id));
+  return INGREDIENT_IDS.filter((id) => unlockedMenu(state).some((dish) => RECIPES[dish].ingredients.includes(id)));
 }
 
 /** The customer at the front of the queue at the till, once they've reached the till. */
@@ -131,24 +130,25 @@ export function customerReadyToPay(state: KitchenState) {
 }
 
 /** What the cook can do at a stove, given what they're carrying. */
-function stoveInteraction(stove: Stove, holding: string): Interaction {
+function stoveInteraction(stove: Stove, holding: ArrayLike<string> & Iterable<string>): Interaction {
   const { id: stoveId, status, dish } = stove;
   const blocked = (reason: string): Interaction => ({ kind: "blocked", station: "stove", stationId: stoveId, reason });
   if (status === "cooking") return blocked("In cottura…");
-  if (status === "ready" && dish) return holding ? blocked("Hai le mani piene") : { kind: "takeDish", stoveId, dish };
-  if (isIngredient(holding)) return { kind: "openStove", stoveId };
-  return blocked(holding ? "Hai già un piatto in mano" : "Ti serve un ingrediente");
+  if (status === "ready" && dish) return holding.length ? blocked("Hai le mani piene") : { kind: "takeDish", stoveId, dish };
+  if (heldIngredients(holding).length) return { kind: "openStove", stoveId };
+  return blocked(heldDish(holding) ? "Hai già un piatto in mano" : "Ti servono degli ingredienti");
 }
 
 /** What either player can do at the pass: leave the dish they carry, or pick up the oldest one. */
-function passInteraction(state: KitchenState, holding: string): Interaction | null {
-  if (isMenuItem(holding)) {
+function passInteraction(state: KitchenState, holding: ArrayLike<string> & Iterable<string>): Interaction | null {
+  const dish = heldDish(holding);
+  if (dish) {
     return state.pass.length < PASS_CAPACITY
-      ? { kind: "placeOnPass", dish: holding }
+      ? { kind: "placeOnPass", dish }
       : { kind: "blocked", station: "pass", reason: "Bancone pieno" };
   }
   const oldest = state.pass[0]?.dish;
-  if (!holding && isMenuItem(oldest)) return { kind: "takeFromPass", dish: oldest };
+  if (!holding.length && isMenuItem(oldest)) return { kind: "takeFromPass", dish: oldest };
   return null;
 }
 
@@ -169,10 +169,8 @@ export function availableInteraction(
   if (player.role === "kitchen") {
     const ticket = nearestTicket(state, at);
     if (ticket) return { kind: "readTicket", ticketId: ticket.id };
-    if (isNearFridge(at)) {
-      if (!player.holding) return { kind: "openFridge" };
-      return isIngredient(player.holding) ? { kind: "putBack" } : null;
-    }
+    // The fridge only takes ingredients: not with a dish in hand.
+    if (isNearFridge(at)) return heldDish(player.holding) ? null : { kind: "openFridge" };
     const stove = nearestStove(state, at);
     if (stove) return stoveInteraction(stove, player.holding);
     if (isNearPass(at)) return passInteraction(state, player.holding);
@@ -201,9 +199,8 @@ export function availableInteraction(
           ? { kind: "blocked", customerId: customer.id, reason: "Comande piene in cucina" }
           : { kind: "takeOrder", customerId: customer.id };
       }
-      if (customer.status === "waitingFood" && isMenuItem(player.holding)) {
-        return { kind: "serve", customerId: customer.id, dish: player.holding };
-      }
+      const dish = heldDish(player.holding);
+      if (customer.status === "waitingFood" && dish) return { kind: "serve", customerId: customer.id, dish };
     }
     if (isNearPass(at)) {
       const interaction = passInteraction(state, player.holding);

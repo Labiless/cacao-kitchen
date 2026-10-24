@@ -31,6 +31,7 @@ import {
   availableInteraction,
   entranceSpot,
   formatMoney,
+  heldDish,
   heldItemInfo,
   isMenuItem,
   interactionLabel,
@@ -40,6 +41,7 @@ import {
   type Interaction,
   type DishSpoiledMessage,
   type EquipmentId,
+  type HeldItem,
   type Player,
   type Role,
   type Stove,
@@ -210,7 +212,6 @@ export class KitchenScene extends Phaser.Scene {
           if (!sprite) return;
           sprite.target = { x: player.x, y: player.y };
           sprite.label.setText(this.labelFor(sessionId, player));
-          sprite.held.setText(this.heldIcon(player));
         }));
         unsubscribe.push(callbacks.listen(player, "action", (action) => {
           if (action) this.actionStartedAt.set(sessionId, this.time.now);
@@ -274,10 +275,13 @@ export class KitchenScene extends Phaser.Scene {
     this.sendInput();
 
     const t = 1 - Math.pow(1 - SMOOTHING, delta / (1000 / 60));
-    for (const { body, label, held, target } of this.sprites.values()) {
+    for (const [sessionId, { body, label, held, target }] of this.sprites) {
       body.x = Phaser.Math.Linear(body.x, target.x, t);
       body.y = Phaser.Math.Linear(body.y, target.y, t);
       label.setPosition(body.x, body.y - PLAYER_SIZE / 2 - 6);
+      // setText is a no-op when nothing changed; `holding` is a list, so it's simplest to check every frame.
+      const player = this.room.state.players.get(sessionId);
+      if (player) held.setText(this.heldIcon(player));
       held.setPosition(body.x + PLAYER_SIZE / 2 - 4, body.y + PLAYER_SIZE / 2 - 4);
     }
     for (const { body, icon, target } of this.customers.values()) {
@@ -381,7 +385,7 @@ export class KitchenScene extends Phaser.Scene {
       const half = TICKET_SLOT_SIZE / 2;
       return { kind: "ticket", id: interaction.ticketId, x: slip.x, top: slip.y - half, bottom: slip.y + half };
     }
-    if (interaction.kind === "openFridge" || interaction.kind === "putBack") {
+    if (interaction.kind === "openFridge") {
       return { kind: "fridge", id: "", x: FRIDGE.x, top: FRIDGE.y - FRIDGE.height / 2, bottom: FRIDGE.y + FRIDGE.height / 2 };
     }
     const stoveId = interaction.kind === "openStove" || interaction.kind === "takeDish" ? interaction.stoveId
@@ -553,7 +557,7 @@ export class KitchenScene extends Phaser.Scene {
     }
     for (const [sessionId, { body }] of this.sprites) {
       const player = this.room.state.players.get(sessionId);
-      if (player?.role === "kitchen" && isMenuItem(player.holding)) {
+      if (player?.role === "kitchen" && heldDish(player.holding)) {
         this.drawBar(body.x, body.y + PLAYER_SIZE / 2 + 6, PLAYER_SIZE, player.freshness, levelColor(player.freshness), 5);
       }
     }
@@ -582,8 +586,8 @@ export class KitchenScene extends Phaser.Scene {
 
   /** What the player is carrying: shown for yourself and for whoever works on your side. */
   private heldIcon(player: Player) {
-    if (!player.holding || !this.sees(player.role)) return "";
-    return heldItemInfo(player.holding).emoji;
+    if (!this.sees(player.role)) return "";
+    return [...player.holding].map((item) => heldItemInfo(item as HeldItem).emoji).join("");
   }
 
   private labelFor(sessionId: string, player: Player) {
