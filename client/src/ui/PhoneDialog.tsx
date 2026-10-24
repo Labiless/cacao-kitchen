@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import {
   INGREDIENTS,
-  INGREDIENT_IDS,
   Message,
   formatMoney,
+  unlockedIngredients,
   type BuyIngredientMessage,
   type IngredientId,
 } from "@cacao/shared";
@@ -20,6 +20,10 @@ export function PhoneDialog({ room, onClose }: Props) {
   const money = useRoomState(room, (state) => state.money);
   const stock = useRoomState(room, (state) => JSON.stringify(state.fridge.toJSON()));
   const fridge = JSON.parse(stock) as Record<string, number>;
+  // Only what the menu needs: new ingredients show up once their recipe is bought.
+  const ingredients = useRoomState(room, (state) => unlockedIngredients(state).join(","))
+    .split(",")
+    .filter(Boolean) as IngredientId[];
 
   function buy(ingredient: IngredientId) {
     room.send(Message.BuyIngredient, { ingredient } satisfies BuyIngredientMessage);
@@ -39,7 +43,7 @@ export function PhoneDialog({ room, onClose }: Props) {
         <h2>📞 Ordina ingredienti</h2>
         <small className="hint">Arrivano subito nel frigo. In cassa: {formatMoney(money)}</small>
         <ul className="shop-list">
-          {INGREDIENT_IDS.map((id) => {
+          {ingredients.map((id) => {
             const { label, emoji, pack } = INGREDIENTS[id];
             return (
               <li key={id}>

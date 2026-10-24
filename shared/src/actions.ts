@@ -1,12 +1,13 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
 // either an instant interaction (hooking or seating a customer, opening the order dialog, reading a ticket,
-// using the fridge, a stove, the pass, phone or computer, serving) or a timed action (cleaning a table, taking payment), which
+// using the fridge, a stove, the pass, phone, computer or recipe book, serving) or a timed action (cleaning a table, taking payment), which
 // completes after `durationMs` unless the player walks out of reach first.
 // A "blocked" interaction only explains why E does nothing right now.
 
 import {
   isAtQueueSpot,
   isNearComputer,
+  isNearRecipeBook,
   isNearCustomer,
   isNearPhone,
   isNearRegister,
@@ -14,7 +15,17 @@ import {
   type TableStatus,
 } from "./hall.ts";
 import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, nearestStove, nearestTicket } from "./kitchen.ts";
-import { MENU, MENU_ITEMS, formatMoney, isIngredient, isMenuItem, type MenuItemId } from "./menu.ts";
+import {
+  INGREDIENT_IDS,
+  MENU,
+  MENU_ITEMS,
+  RECIPES,
+  formatMoney,
+  isIngredient,
+  isMenuItem,
+  type IngredientId,
+  type MenuItemId,
+} from "./menu.ts";
 import type { CustomerStatus } from "./hall.ts";
 import type { Customer, KitchenState, Stove } from "./state.ts";
 
@@ -47,6 +58,8 @@ export type Interaction =
   | { kind: "takeDish"; stoveId: string; dish: MenuItemId }
   /** Client-only: opens the computer popup. The server is involved once something is bought and placed. */
   | { kind: "openComputer" }
+  /** Client-only: opens the recipe book. The server is involved once a recipe is bought. */
+  | { kind: "openRecipeBook" }
   | { kind: "placeOnPass"; dish: MenuItemId }
   | { kind: "takeFromPass"; dish: MenuItemId }
   | { kind: "serve"; customerId: string; dish: MenuItemId }
@@ -67,6 +80,7 @@ export function interactionLabel(interaction: Interaction) {
     case "openStove": return "Usa il fornello";
     case "openPhone": return "Usa il telefono";
     case "openComputer": return "Usa il computer";
+    case "openRecipeBook": return "Consulta il libro delle ricette";
     case "takeDish": return `Prendi ${MENU[interaction.dish].label}`;
     case "placeOnPass": return "Posa sul bancone";
     case "takeFromPass": return `Prendi ${MENU[interaction.dish].label}`;
@@ -103,6 +117,11 @@ export function entranceLine(state: KitchenState) {
 /** The restaurant's menu: the items whose recipe has been unlocked, in menu order. */
 export function unlockedMenu(state: KitchenState): MenuItemId[] {
   return MENU_ITEMS.filter((id) => state.unlockedRecipes.includes(id));
+}
+
+/** Ingredients of the unlocked recipes: the only ones that can be ordered on the phone. */
+export function unlockedIngredients(state: KitchenState): IngredientId[] {
+  return INGREDIENT_IDS.filter((id) => unlockedMenu(state).some((dish) => RECIPES[dish].ingredient === id));
 }
 
 /** The customer at the front of the queue at the till, once they've reached the till. */
@@ -192,6 +211,7 @@ export function availableInteraction(
     }
     if (isNearPhone(at)) return { kind: "openPhone" };
     if (isNearComputer(at)) return { kind: "openComputer" };
+    if (isNearRecipeBook(at)) return { kind: "openRecipeBook" };
     const payer = customerReadyToPay(state);
     if (payer && isNearRegister(at)) {
       return { kind: "action", action: "checkout", targetId: payer.id, amountCents: payer.bill };

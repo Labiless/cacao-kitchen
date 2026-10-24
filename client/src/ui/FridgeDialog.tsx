@@ -1,5 +1,12 @@
 import { useEffect } from "react";
-import { INGREDIENTS, INGREDIENT_IDS, Message, type IngredientId, type TakeIngredientMessage } from "@cacao/shared";
+import {
+  INGREDIENTS,
+  INGREDIENT_IDS,
+  Message,
+  unlockedIngredients,
+  type IngredientId,
+  type TakeIngredientMessage,
+} from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { useRoomState } from "./useRoomState.ts";
 
@@ -12,6 +19,8 @@ interface Props {
 export function FridgeDialog({ room, onClose }: Props) {
   const stock = useRoomState(room, (state) => JSON.stringify(state.fridge.toJSON()));
   const fridge = JSON.parse(stock) as Record<string, number>;
+  const unlocked = useRoomState(room, (state) => unlockedIngredients(state).join(","));
+  const shelves = INGREDIENT_IDS.filter((id) => unlocked.split(",").includes(id) || (fridge[id] ?? 0) > 0);
 
   function take(ingredient: IngredientId) {
     room.send(Message.TakeIngredient, { ingredient } satisfies TakeIngredientMessage);
@@ -32,7 +41,7 @@ export function FridgeDialog({ room, onClose }: Props) {
         <h2>Frigo</h2>
         <small className="hint">Cosa prendi? Gli ingredienti si ordinano al telefono, in sala.</small>
         <div className="menu-grid">
-          {INGREDIENT_IDS.map((id) => {
+          {shelves.map((id) => {
             const units = fridge[id] ?? 0;
             return (
               <button key={id} type="button" className="menu-item" disabled={units === 0} onClick={() => take(id)}>

@@ -55,6 +55,9 @@ export const PHONE = { x: WALL.x + WALL.thickness / 2 + 14, y: 110, width: 28, h
 /** Below the phone: the waiter buys equipment here. */
 export const COMPUTER = { x: WALL.x + WALL.thickness / 2 + 18, y: 240, width: 36, height: 30 } as const;
 
+/** Below the computer: the waiter buys new recipes here. */
+export const RECIPE_BOOK = { x: WALL.x + WALL.thickness / 2 + 16, y: 355, width: 32, height: 30 } as const;
+
 /** Where customers queuing at the till stand, front first, in a line down from it: one spot per table. */
 export const QUEUE_SPOTS = Array.from({ length: TABLE_LAYOUT.length }, (_, i) => ({
   x: REGISTER.x,
@@ -132,9 +135,9 @@ export function isNearCustomer(p: Point, customer: Point) {
   return withinReach(p, PLAYER_SIZE, customer, CUSTOMER_SIZE);
 }
 
-/** Whether a player centered at `p` would overlap any hall furniture other than tables (till, phone, computer). */
+/** Whether a player centered at `p` would overlap any hall furniture other than tables (till, phone, computer, book). */
 export function overlapsHallFurniture(p: Point) {
-  return overlapsBox(p, REGISTER) || overlapsBox(p, PHONE) || overlapsBox(p, COMPUTER);
+  return overlapsBox(p, REGISTER) || overlapsBox(p, PHONE) || overlapsBox(p, COMPUTER) || overlapsBox(p, RECIPE_BOOK);
 }
 
 /** Whether a player centered at `p` is close enough to work the till. */
@@ -148,6 +151,10 @@ export function isNearPhone(p: Point) {
 
 export function isNearComputer(p: Point) {
   return isNearBox(p, COMPUTER);
+}
+
+export function isNearRecipeBook(p: Point) {
+  return isNearBox(p, RECIPE_BOOK);
 }
 
 /** Whether a customer has reached their queue spot (they walk there on their own). */

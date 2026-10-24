@@ -17,6 +17,7 @@ import {
   REGISTER,
   STOVE_SIZE,
   COMPUTER,
+  RECIPE_BOOK,
   Message,
   PLAYER_SIZE,
   ROLE_INFO,
@@ -91,7 +92,8 @@ export type ScenePopup =
   | { kind: "fridge" }
   | { kind: "stove"; stoveId: string }
   | { kind: "phone" }
-  | { kind: "computer" };
+  | { kind: "computer" }
+  | { kind: "recipeBook" };
 /** Game event asking React to open a popup; the payload is a ScenePopup. */
 export const OPEN_POPUP_EVENT = "openPopup";
 /** Game event from React to start placing bought equipment in the kitchen; the payload is an EquipmentId. */
@@ -120,6 +122,7 @@ export class KitchenScene extends Phaser.Scene {
   private register!: Phaser.GameObjects.Rectangle;
   private phone!: Phaser.GameObjects.Rectangle;
   private computer!: Phaser.GameObjects.Rectangle;
+  private recipeBook!: Phaser.GameObjects.Rectangle;
   /** One icon per spot on the pass. */
   private passDishes: Phaser.GameObjects.Text[] = [];
   /** What the pass icons currently show, to redraw only when it changes. */
@@ -157,6 +160,10 @@ export class KitchenScene extends Phaser.Scene {
       .rectangle(COMPUTER.x, COMPUTER.y, COMPUTER.width, COMPUTER.height, 0x2f3b45)
       .setDepth(Depth.Table);
     this.add.text(COMPUTER.x, COMPUTER.y, "💻", { fontSize: "18px" }).setOrigin(0.5).setDepth(Depth.Table);
+    this.recipeBook = this.add
+      .rectangle(RECIPE_BOOK.x, RECIPE_BOOK.y, RECIPE_BOOK.width, RECIPE_BOOK.height, 0x7a3b2e)
+      .setDepth(Depth.Table);
+    this.add.text(RECIPE_BOOK.x, RECIPE_BOOK.y, "📖", { fontSize: "18px" }).setOrigin(0.5).setDepth(Depth.Table);
 
     // The pass cuts through the wall, so it's drawn on top of it.
     this.pass = this.add.rectangle(PASS.x, PASS.y, PASS.width, PASS.height, 0xc89b6d).setDepth(Depth.Table);
@@ -176,7 +183,9 @@ export class KitchenScene extends Phaser.Scene {
     this.keys = this.input.keyboard!.addKeys({
       up: "UP", down: "DOWN", left: "LEFT", right: "RIGHT", w: "W", a: "A", s: "S", d: "D",
     }, false) as typeof this.keys;
+    // E or the space bar.
     this.input.keyboard!.on("keydown-E", () => this.interact());
+    this.input.keyboard!.on("keydown-SPACE", () => this.interact());
 
     this.placement = new EquipmentPlacement(this, this.room, Depth.Overlay);
     const startPlacement = (item: EquipmentId) => this.placement.start(item);
@@ -311,6 +320,7 @@ export class KitchenScene extends Phaser.Scene {
     else if (interaction.kind === "openStove") this.openPopup({ kind: "stove", stoveId: interaction.stoveId });
     else if (interaction.kind === "openPhone") this.openPopup({ kind: "phone" });
     else if (interaction.kind === "openComputer") this.openPopup({ kind: "computer" });
+    else if (interaction.kind === "openRecipeBook") this.openPopup({ kind: "recipeBook" });
     else this.room.send(Message.Interact);
   }
 
@@ -345,6 +355,8 @@ export class KitchenScene extends Phaser.Scene {
     else this.phone.setStrokeStyle();
     if (target?.kind === "computer") this.computer.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.computer.setStrokeStyle();
+    if (target?.kind === "recipeBook") this.recipeBook.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.recipeBook.setStrokeStyle();
 
     for (const [id, slip] of this.tickets) {
       if (target?.kind === "ticket" && target.id === id) slip.setStrokeStyle(3, 0xe8833a);
@@ -353,7 +365,7 @@ export class KitchenScene extends Phaser.Scene {
 
     this.hint.setVisible(!!target);
     if (interaction && target) {
-      const key = interaction.kind === "blocked" ? "⛔" : "E ·";
+      const key = interaction.kind === "blocked" ? "⛔" : "E/Spazio ·";
       this.hint.setText(`${key} ${interactionLabel(interaction)}`);
       // Things on the top wall have no room above them: show the hint underneath instead.
       if (target.top < 40) this.hint.setOrigin(0.5, 0).setPosition(target.x, target.bottom + 6);
@@ -394,6 +406,10 @@ export class KitchenScene extends Phaser.Scene {
     if (interaction.kind === "openComputer") {
       const half = COMPUTER.height / 2;
       return { kind: "computer", id: "", x: COMPUTER.x, top: COMPUTER.y - half, bottom: COMPUTER.y + half };
+    }
+    if (interaction.kind === "openRecipeBook") {
+      const half = RECIPE_BOOK.height / 2;
+      return { kind: "recipeBook", id: "", x: RECIPE_BOOK.x, top: RECIPE_BOOK.y - half, bottom: RECIPE_BOOK.y + half };
     }
     if (interaction.kind === "action" && interaction.action === "checkout") {
       const half = REGISTER.height / 2;

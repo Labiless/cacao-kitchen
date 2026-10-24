@@ -40,6 +40,8 @@ import {
   isNearPhone,
   isNearStove,
   isNearComputer,
+  isNearRecipeBook,
+  unlockedIngredients,
   isEquipment,
   canPlaceEquipment,
   cellCenter,
@@ -64,6 +66,7 @@ import {
   type CookMessage,
   type CustomerStatus,
   type BuyEquipmentMessage,
+  type BuyRecipeMessage,
   type DishSpoiledMessage,
   type BuyIngredientMessage,
   type DiscardTicketMessage,
@@ -180,6 +183,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       const player = this.state.players.get(client.sessionId);
       const ingredient = message?.ingredient;
       if (player?.role !== "hall" || !isNearPhone(player) || !isIngredient(ingredient)) return;
+      if (!unlockedIngredients(this.state).includes(ingredient)) return;
       const { units, priceCents } = INGREDIENTS[ingredient].pack;
       if (this.state.money < priceCents) return;
       this.state.money -= priceCents;
@@ -199,6 +203,16 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       stove.status = "cooking";
       stove.dish = message.dish;
       this.stoveReadyAt.set(stove.id, this.clock.currentTime + recipe.cookMs);
+    });
+
+    this.onMessage(Message.BuyRecipe, (client, message: BuyRecipeMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      const recipe = message?.recipe;
+      if (player?.role !== "hall" || !isNearRecipeBook(player) || !isMenuItem(recipe)) return;
+      const price = RECIPES[recipe].unlockPriceCents;
+      if (price === undefined || this.state.unlockedRecipes.includes(recipe) || this.state.money < price) return;
+      this.state.money -= price;
+      this.state.unlockedRecipes.push(recipe);
     });
 
     this.onMessage(Message.BuyEquipment, (client, message: BuyEquipmentMessage) => {
@@ -342,6 +356,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       case "openStove":
       case "openPhone":
       case "openComputer":
+      case "openRecipeBook":
       case "blocked":
         // Nothing to do on the server: these only open a popup (or explain why E does nothing).
         break;

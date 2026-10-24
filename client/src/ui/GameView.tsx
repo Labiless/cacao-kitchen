@@ -7,6 +7,7 @@ import { FridgeDialog } from "./FridgeDialog.tsx";
 import { StoveDialog } from "./StoveDialog.tsx";
 import { PhoneDialog } from "./PhoneDialog.tsx";
 import { ComputerDialog } from "./ComputerDialog.tsx";
+import { RecipeBookDialog } from "./RecipeBookDialog.tsx";
 import { useRoomState } from "./useRoomState.ts";
 import { NameDialog } from "./NameDialog.tsx";
 import { OrderDialog } from "./OrderDialog.tsx";
@@ -25,7 +26,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
   const money = useRoomState(room, (state) => state.money);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
-  /** Popup opened from the scene (a ticket, the fridge, a stove, the phone, the computer), if any. */
+  /** Popup opened from the scene (a ticket, the fridge, a stove, the phone, the computer, the recipe book), if any. */
   const [popup, setPopup] = useState<ScenePopup | null>(null);
 
   // Phaser owns the canvas; React only mounts/unmounts it.
@@ -91,7 +92,15 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
       <div className="money" title="Cassa del ristorante">💰 {formatMoney(money)}</div>
 
-      <button className="room-code" title="Copia il link d'invito" onClick={copyInvite}>
+      <button
+        className="room-code"
+        title="Copia il link d'invito"
+        onClick={(event) => {
+          // Drop focus, or the space bar (used to interact) would click it again.
+          event.currentTarget.blur();
+          copyInvite();
+        }}
+      >
         {copied === "ok" ? "Link copiato!" : copied === "error" ? "Copia non riuscita" : room.roomId}
       </button>
 
@@ -100,6 +109,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
       {popup?.kind === "stove" && <StoveDialog room={room} stoveId={popup.stoveId} onClose={closePopup} />}
       {popup?.kind === "phone" && <PhoneDialog room={room} onClose={closePopup} />}
       {popup?.kind === "computer" && <ComputerDialog room={room} onBuy={startPlacement} onClose={closePopup} />}
+      {popup?.kind === "recipeBook" && <RecipeBookDialog room={room} onClose={closePopup} />}
       {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
     </div>

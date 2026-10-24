@@ -6,6 +6,9 @@ export const MENU = {
   tea: { label: "Tè caldo", emoji: "🍵", spoken: "un tè caldo", priceCents: 400 },
   pancakes: { label: "Pancake", emoji: "🥞", spoken: "dei pancake", priceCents: 600 },
   egg: { label: "Uovo al tegamino", emoji: "🍳", spoken: "un uovo al tegamino", priceCents: 450 },
+  pudding: { label: "Crema al cioccolato", emoji: "🍮", spoken: "una crema al cioccolato", priceCents: 550 },
+  soup: { label: "Zuppa di verdure", emoji: "🍲", spoken: "una zuppa di verdure", priceCents: 650 },
+  spaghetti: { label: "Spaghetti al burro", emoji: "🍝", spoken: "degli spaghetti al burro", priceCents: 700 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];
@@ -20,6 +23,9 @@ export const INGREDIENTS = {
   teaLeaves: { label: "Foglie di tè", emoji: "🌿", pack: { units: 3, priceCents: 150 } },
   batter: { label: "Pastella", emoji: "🥣", pack: { units: 3, priceCents: 300 } },
   eggs: { label: "Uova", emoji: "🥚", pack: { units: 6, priceCents: 300 } },
+  milk: { label: "Latte", emoji: "🥛", pack: { units: 3, priceCents: 200 } },
+  vegetables: { label: "Verdure", emoji: "🥕", pack: { units: 3, priceCents: 200 } },
+  dryPasta: { label: "Spaghetti", emoji: "🌾", pack: { units: 4, priceCents: 200 } },
 } as const;
 export type IngredientId = keyof typeof INGREDIENTS;
 export const INGREDIENT_IDS = Object.keys(INGREDIENTS) as IngredientId[];
@@ -32,8 +38,8 @@ interface Recipe {
   ingredient: IngredientId;
   cookMs: number;
   /**
-   * Price to unlock the recipe. Recipes without one (simple, single-ingredient ones) are known from
-   * the start; the others will have to be bought before customers can order them.
+   * Price to unlock the recipe in the recipe book. Recipes without one are known from the start; the
+   * others have to be bought before customers can order them and their ingredient can be ordered.
    */
   unlockPriceCents?: number;
 }
@@ -44,6 +50,9 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
   tea: { ingredient: "teaLeaves", cookMs: 4000 },
   pancakes: { ingredient: "batter", cookMs: 8000 },
   egg: { ingredient: "eggs", cookMs: 5000 },
+  pudding: { ingredient: "milk", cookMs: 7000, unlockPriceCents: 1000 },
+  soup: { ingredient: "vegetables", cookMs: 9000, unlockPriceCents: 1200 },
+  spaghetti: { ingredient: "dryPasta", cookMs: 10000, unlockPriceCents: 1500 },
 };
 
 /** Recipes the restaurant knows from the start. */
