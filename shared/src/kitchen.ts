@@ -27,6 +27,27 @@ export const TICKET_SLOTS = Array.from({ length: MAX_TICKETS }, (_, i) => ({
 /** Against the left kitchen wall; the cook takes ingredients from it. */
 export const FRIDGE = { x: 30, y: 260, width: 52, height: 96 } as const;
 
+/** On the left kitchen wall, above the fridge: the cook orders ingredients here. */
+export const PHONE = { x: 14, y: 100, width: 28, height: 28 } as const;
+
+/** Loading bay in the bottom-left corner of the kitchen, where the supplier's truck stops. */
+export const DELIVERY_BAY = { x: 50, y: 555, width: 90, height: 80 } as const;
+
+export const DELIVERY = {
+  /** Seconds between ordering on the phone and the truck arriving: random in this range. */
+  arrivalS: { min: 5, max: 10 },
+  /** Most packs of one ingredient in a single order. */
+  maxPacks: 9,
+} as const;
+
+/**
+ * none     → nothing ordered: the phone takes orders
+ * onTheWay → ordered and paid, the truck is coming
+ * arrived  → the truck waits at the bay for the cook to unload it
+ */
+export const DELIVERY_STATUSES = ["none", "onTheWay", "arrived"] as const;
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+
 /**
  * Grid that equipment snaps to: the same 50px squares as the kitchen floor tiles, from the left wall
  * up to the middle wall (only whole squares).
@@ -81,7 +102,7 @@ export type StoveStatus = (typeof STOVE_STATUSES)[number];
 
 /** Whether a player centered at `p` would overlap any piece of kitchen furniture (the pass included). */
 export function overlapsKitchenFurniture(p: Point, stoves: Iterable<Point>) {
-  if (overlapsBox(p, FRIDGE) || overlapsBox(p, PASS) || overlapsTicketSlots(p)) return true;
+  if (overlapsBox(p, FRIDGE) || overlapsBox(p, PHONE) || overlapsBox(p, PASS) || overlapsTicketSlots(p)) return true;
   for (const stove of stoves) {
     if (overlapsBox(p, stoveBox(stove))) return true;
   }
@@ -97,7 +118,7 @@ export function canPlaceEquipment(state: KitchenState, col: number, row: number)
   if (col < 0 || row < 0 || col >= KITCHEN_GRID.cols || row >= KITCHEN_GRID.rows) return false;
 
   const cell = cellBox(col, row);
-  const fixed: Box[] = [FRIDGE, PASS, ...TICKET_SLOTS.map((s) => ({ ...s, width: TICKET_SLOT_SIZE, height: TICKET_SLOT_SIZE }))];
+  const fixed: Box[] = [FRIDGE, PHONE, PASS, DELIVERY_BAY, ...TICKET_SLOTS.map((s) => ({ ...s, width: TICKET_SLOT_SIZE, height: TICKET_SLOT_SIZE }))];
   if (fixed.some((box) => boxesOverlap(cell, box))) return false;
   for (const stove of state.stoves.values()) {
     if (boxesOverlap(cell, stoveBox(stove))) return false;
@@ -110,6 +131,15 @@ export function canPlaceEquipment(state: KitchenState, col: number, row: number)
 
 export function isNearFridge(p: Point) {
   return isNearBox(p, FRIDGE);
+}
+
+export function isNearPhone(p: Point) {
+  return isNearBox(p, PHONE);
+}
+
+/** The bay is a patch of floor, so "near" includes standing on it. */
+export function isNearDeliveryBay(p: Point) {
+  return isNearBox(p, DELIVERY_BAY);
 }
 
 /** The stove a player at `p` would use: the closest one within reach. */

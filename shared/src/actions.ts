@@ -1,6 +1,7 @@
 // What a player can do. Pressing E triggers whatever availableInteraction() returns:
 // either an instant interaction (hooking or seating a customer, opening the order dialog, reading a ticket,
-// using the fridge, a stove, the pass, phone, computer or recipe book, serving) or a timed action (cleaning a table, taking payment), which
+// using the fridge, a stove, the pass, phone, computer or recipe book, serving) or a timed action (cleaning
+// a table, taking payment, unloading a delivery), which
 // completes after `durationMs` unless the player walks out of reach first.
 // A "blocked" interaction only explains why E does nothing right now.
 
@@ -9,12 +10,20 @@ import {
   isNearComputer,
   isNearRecipeBook,
   isNearCustomer,
-  isNearPhone,
   isNearRegister,
   isNearTable,
   type TableStatus,
 } from "./hall.ts";
-import { PASS_CAPACITY, freeTicketSlot, isNearFridge, isNearPass, nearestStove, nearestTicket } from "./kitchen.ts";
+import {
+  PASS_CAPACITY,
+  freeTicketSlot,
+  isNearFridge,
+  isNearPass,
+  isNearDeliveryBay,
+  isNearPhone,
+  nearestStove,
+  nearestTicket,
+} from "./kitchen.ts";
 import {
   INGREDIENT_IDS,
   MENU,
@@ -33,6 +42,7 @@ import type { Customer, KitchenState, Stove } from "./state.ts";
 export const ACTIONS = {
   cleanTable: { label: "Pulisci tavolo", durationMs: 500 },
   checkout: { label: "Incassa", durationMs: 800 },
+  receiveDelivery: { label: "Ritira la consegna", durationMs: 3000 },
 } as const;
 export type ActionId = keyof typeof ACTIONS;
 
@@ -65,7 +75,10 @@ export type Interaction =
   | { kind: "serve"; customerId: string; dish: MenuItemId }
   /** E does nothing right now; `reason` says why. It's about either a customer or a kitchen station. */
   | { kind: "blocked"; reason: string; customerId?: string; station?: "stove" | "pass"; stationId?: string }
-  /** `targetId` is the table to clean or the customer paying; `amountCents` is what they're paying. */
+  /**
+   * `targetId` is the table to clean, the customer paying, or "delivery" for the truck;
+   * `amountCents` is what the customer is paying.
+   */
   | { kind: "action"; action: ActionId; targetId: string; amountCents?: number };
 
 export function interactionLabel(interaction: Interaction) {
@@ -174,6 +187,10 @@ export function availableInteraction(
     const stove = nearestStove(state, at);
     if (stove) return stoveInteraction(stove, player.holding);
     if (isNearPass(at)) return passInteraction(state, player.holding);
+    if (isNearPhone(at)) return { kind: "openPhone" };
+    if (state.delivery.status === "arrived" && isNearDeliveryBay(at)) {
+      return { kind: "action", action: "receiveDelivery", targetId: "delivery" };
+    }
     return null;
   }
 
@@ -206,7 +223,6 @@ export function availableInteraction(
       const interaction = passInteraction(state, player.holding);
       if (interaction) return interaction;
     }
-    if (isNearPhone(at)) return { kind: "openPhone" };
     if (isNearComputer(at)) return { kind: "openComputer" };
     if (isNearRecipeBook(at)) return { kind: "openRecipeBook" };
     const payer = customerReadyToPay(state);

@@ -41,6 +41,8 @@ import {
   isMenuItem,
   isNearFridge,
   isNearPhone,
+  isNearDeliveryBay,
+  DELIVERY,
   isNearStove,
   isNearComputer,
   isNearRecipeBook,
@@ -71,8 +73,9 @@ import {
   type BuyEquipmentMessage,
   type BuyRecipeMessage,
   type DishSpoiledMessage,
-  type BuyIngredientMessage,
+  type OrderSuppliesMessage,
   type DiscardTicketMessage,
+  type IngredientId,
   type TakeIngredientMessage,
   type JoinOptions,
   type PlaceOrderMessage,
@@ -102,6 +105,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   /** When each customer in a TIMED_STATUSES status moves on to the next one. */
   private statusEndsAt = new Map<string, number>();
   private nextCustomerAt = 0;
+  /** When the supplier's truck reaches the bay, while a delivery is on the way. */
+  private deliveryArrivesAt = 0;
   /** When the dish on each stove is done, by stove id. */
   private stoveReadyAt = new Map<string, number>();
   private stoveCount = 0;
@@ -192,15 +197,29 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.state.fridge.set(ingredient, (this.state.fridge.get(ingredient) ?? 0) + 1);
     });
 
-    this.onMessage(Message.BuyIngredient, (client, message: BuyIngredientMessage) => {
+    this.onMessage(Message.OrderSupplies, (client, message: OrderSuppliesMessage) => {
       const player = this.state.players.get(client.sessionId);
-      const ingredient = message?.ingredient;
-      if (player?.role !== "hall" || !isNearPhone(player) || !isIngredient(ingredient)) return;
-      if (!unlockedIngredients(this.state).includes(ingredient)) return;
-      const { units, priceCents } = INGREDIENTS[ingredient].pack;
-      if (this.state.money < priceCents) return;
-      this.state.money -= priceCents;
-      this.state.fridge.set(ingredient, (this.state.fridge.get(ingredient) ?? 0) + units);
+      if (player?.role !== "kitchen" || !isNearPhone(player) || this.state.delivery.status !== "none") return;
+
+      // Validate the whole order before charging anything.
+      const available = unlockedIngredients(this.state);
+      const order: Array<[IngredientId, number]> = [];
+      for (const [ingredient, packs] of Object.entries(message?.packs ?? {})) {
+        if (!isIngredient(ingredient) || !available.includes(ingredient)) return;
+        if (!Number.isInteger(packs) || packs < 0 || packs > DELIVERY.maxPacks) return;
+        if (packs > 0) order.push([ingredient, packs]);
+      }
+      const cost = order.reduce((sum, [ingredient, packs]) => sum + INGREDIENTS[ingredient].pack.priceCents * packs, 0);
+      if (order.length === 0 || this.state.money < cost) return;
+
+      this.state.money -= cost;
+      this.state.delivery.items.clear();
+      for (const [ingredient, packs] of order) {
+        this.state.delivery.items.set(ingredient, INGREDIENTS[ingredient].pack.units * packs);
+      }
+      this.state.delivery.status = "onTheWay";
+      const { min, max } = DELIVERY.arrivalS;
+      this.deliveryArrivesAt = this.clock.currentTime + (min + Math.random() * (max - min)) * 1000;
     });
 
     this.onMessage(Message.Cook, (client, message: CookMessage) => {
@@ -399,6 +418,15 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         this.sendAway(customer);
         break;
       }
+      case "receiveDelivery": {
+        const { delivery } = this.state;
+        delivery.items.forEach((units, ingredient) => {
+          this.state.fridge.set(ingredient, (this.state.fridge.get(ingredient) ?? 0) + units);
+        });
+        delivery.items.clear();
+        delivery.status = "none";
+        break;
+      }
     }
     this.clearAction(sessionId, player);
   }
@@ -411,6 +439,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       }
       case "checkout":
         return isNearRegister(player) && customerReadyToPay(this.state)?.id === player.actionTarget;
+      case "receiveDelivery":
+        return isNearDeliveryBay(player) && this.state.delivery.status === "arrived";
       default:
         return false;
     }
@@ -436,6 +466,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       }
     }
     this.updateFreshness(dt);
+
+    if (this.state.delivery.status === "onTheWay" && this.clock.currentTime >= this.deliveryArrivesAt) {
+      this.state.delivery.status = "arrived";
+    }
   }
 
   /** Cooked dishes go stale until the waiter picks them up; stale ones are thrown away. */

@@ -39,7 +39,7 @@ export function RecipeBookDialog({ room, onClose }: Props) {
       <div className="card dialog phone-dialog" role="dialog" aria-label="Libro delle ricette">
         <h2>📖 Libro delle ricette</h2>
         <small className="hint">
-          Una ricetta comprata va nel menù: i clienti la ordinano e il suo ingrediente si ordina al telefono.
+          Una ricetta comprata va nel menù: i clienti la ordinano e il cuoco può ordinarne l'ingrediente al telefono.
           In cassa: {formatMoney(money)}
         </small>
         <ul className="shop-list">

@@ -50,7 +50,7 @@ export function FridgeDialog({ room, onClose }: Props) {
       <div className="card dialog fridge-dialog" role="dialog" aria-label="Frigo">
         <h2>Frigo</h2>
         <small className="hint">
-          Puoi portare fino a {MAX_HELD_INGREDIENTS} ingredienti. Si ordinano al telefono, in sala.
+          Puoi portare fino a {MAX_HELD_INGREDIENTS} ingredienti. Si ordinano al telefono, sopra il frigo.
         </small>
         <div className="menu-grid">
           {shelves.map((id) => {

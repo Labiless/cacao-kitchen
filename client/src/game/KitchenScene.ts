@@ -17,6 +17,7 @@ import {
   REGISTER,
   STOVE_SIZE,
   COMPUTER,
+  DELIVERY_BAY,
   RECIPE_BOOK,
   Message,
   PLAYER_SIZE,
@@ -125,6 +126,9 @@ export class KitchenScene extends Phaser.Scene {
   private phone!: Phaser.GameObjects.Rectangle;
   private computer!: Phaser.GameObjects.Rectangle;
   private recipeBook!: Phaser.GameObjects.Rectangle;
+  /** The supplier's truck, shown at the bay while it waits to be unloaded. */
+  private truck!: Phaser.GameObjects.Rectangle;
+  private truckIcon!: Phaser.GameObjects.Text;
   /** One icon per spot on the pass. */
   private passDishes: Phaser.GameObjects.Text[] = [];
   /** What the pass icons currently show, to redraw only when it changes. */
@@ -162,6 +166,15 @@ export class KitchenScene extends Phaser.Scene {
       .rectangle(COMPUTER.x, COMPUTER.y, COMPUTER.width, COMPUTER.height, 0x2f3b45)
       .setDepth(Depth.Table);
     this.add.text(COMPUTER.x, COMPUTER.y, "💻", { fontSize: "18px" }).setOrigin(0.5).setDepth(Depth.Table);
+    this.truck = this.add
+      .rectangle(DELIVERY_BAY.x, DELIVERY_BAY.y, DELIVERY_BAY.width - 16, DELIVERY_BAY.height - 20, 0xe9e2d0)
+      .setDepth(Depth.Table)
+      .setVisible(false);
+    this.truckIcon = this.add.text(DELIVERY_BAY.x, DELIVERY_BAY.y, "🚚", { fontSize: "36px" })
+      .setOrigin(0.5)
+      .setDepth(Depth.Table)
+      .setVisible(false);
+
     this.recipeBook = this.add
       .rectangle(RECIPE_BOOK.x, RECIPE_BOOK.y, RECIPE_BOOK.width, RECIPE_BOOK.height, 0x7a3b2e)
       .setDepth(Depth.Table);
@@ -242,6 +255,13 @@ export class KitchenScene extends Phaser.Scene {
 
       callbacks.listen("money", (money, previous) => {
         if (previous !== undefined && money > previous && this.sees("hall")) this.showMoneyIn(money - previous);
+      }),
+
+      callbacks.listen(this.room.state.delivery, "status", (status) => {
+        // Kitchen business: only the cook sees the truck.
+        const visible = status === "arrived" && this.sees("kitchen");
+        this.truck.setVisible(visible);
+        this.truckIcon.setVisible(visible);
       }),
 
       callbacks.onAdd("stoves", (stove, id) => {
@@ -359,6 +379,8 @@ export class KitchenScene extends Phaser.Scene {
     else this.phone.setStrokeStyle();
     if (target?.kind === "computer") this.computer.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.computer.setStrokeStyle();
+    if (target?.kind === "truck") this.truck.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    else this.truck.setStrokeStyle(2, 0x8a7563);
     if (target?.kind === "recipeBook") this.recipeBook.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.recipeBook.setStrokeStyle();
 
@@ -415,6 +437,10 @@ export class KitchenScene extends Phaser.Scene {
       const half = RECIPE_BOOK.height / 2;
       return { kind: "recipeBook", id: "", x: RECIPE_BOOK.x, top: RECIPE_BOOK.y - half, bottom: RECIPE_BOOK.y + half };
     }
+    if (interaction.kind === "action" && interaction.action === "receiveDelivery") {
+      const half = DELIVERY_BAY.height / 2;
+      return { kind: "truck", id: "", x: DELIVERY_BAY.x, top: DELIVERY_BAY.y - half, bottom: DELIVERY_BAY.y + half };
+    }
     if (interaction.kind === "action" && interaction.action === "checkout") {
       const half = REGISTER.height / 2;
       return { kind: "register", id: "", x: REGISTER.x, top: REGISTER.y - half, bottom: REGISTER.y + half };
@@ -439,10 +465,14 @@ export class KitchenScene extends Phaser.Scene {
     for (const [sessionId, startedAt] of this.actionStartedAt) {
       const player = this.room.state.players.get(sessionId);
       if (!player?.action) continue;
-      // Cleaning and checkout happen in the hall.
-      if (!this.sees("hall")) continue;
+      // Only seen from the side where it happens.
+      if (!this.sees(player.role)) continue;
       const progress = Math.min(1, (this.time.now - startedAt) / ACTIONS[player.action].durationMs);
 
+      if (player.action === "receiveDelivery") {
+        this.drawBar(DELIVERY_BAY.x, DELIVERY_BAY.y - DELIVERY_BAY.height / 2 + 6, DELIVERY_BAY.width - 10, progress, 0x7bd389);
+        continue;
+      }
       if (player.action === "checkout") {
         // The till sits against the top wall: draw the bar across it.
         this.drawBar(REGISTER.x, REGISTER.y + REGISTER.height / 2 - 6, REGISTER.width - 8, progress, 0x7bd389);
@@ -693,6 +723,14 @@ export class KitchenScene extends Phaser.Scene {
     g.fillRect(WORLD.width - 6, REGISTER.y - REGISTER.height / 2 - 6, 6, REGISTER.height + 12);
     g.lineStyle(1, 0x8a6a4a, 0.35);
     for (const { x, y } of QUEUE_SPOTS) g.strokeCircle(x, y, CUSTOMER_SIZE / 2 + 2);
+
+    // Loading bay where the supplier's truck stops.
+    g.fillStyle(0xb8ad97, 0.6);
+    g.fillRect(DELIVERY_BAY.x - DELIVERY_BAY.width / 2, DELIVERY_BAY.y - DELIVERY_BAY.height / 2, DELIVERY_BAY.width, DELIVERY_BAY.height);
+    this.add
+      .text(DELIVERY_BAY.x, DELIVERY_BAY.y + DELIVERY_BAY.height / 2 - 2, "Consegne", { ...TEXT_STYLE, fontSize: "11px" })
+      .setOrigin(0.5, 1)
+      .setAlpha(0.6);
 
     // Doormat where customers come in, and marks where the line forms along the bottom wall.
     g.fillStyle(0x9c3d54, 0.55);

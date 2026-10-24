@@ -3,7 +3,7 @@ import type { Role } from "./index.ts";
 import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
 import type { MenuItemId } from "./menu.ts";
-import type { StoveStatus } from "./kitchen.ts";
+import type { DeliveryStatus, StoveStatus } from "./kitchen.ts";
 
 export const Player = schema({
   name: t.string(),
@@ -84,6 +84,14 @@ export const PassDish = schema({
 export type PassDish = SchemaType<typeof PassDish>;
 export type Stove = SchemaType<typeof Stove>;
 
+/** The one supplier order that can be in progress at a time. */
+export const Delivery = schema({
+  status: t.string<DeliveryStatus>().default("none"),
+  /** Units of each ingredient on the truck, by IngredientId. */
+  items: t.map("number"),
+}, "Delivery");
+export type Delivery = SchemaType<typeof Delivery>;
+
 export const KitchenState = schema({
   players: t.map(Player),
   tables: t.map(Table),
@@ -98,6 +106,7 @@ export const KitchenState = schema({
   money: t.number().default(0),
   /** Units of each ingredient in the fridge, by IngredientId. */
   fridge: t.map("number"),
+  delivery: Delivery,
   /** Menu items whose recipe the restaurant knows: the menu. Customers order from these, stock or no stock. */
   unlockedRecipes: t.array("string"),
 }, "KitchenState");

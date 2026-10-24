@@ -56,12 +56,13 @@ export const Message = {
   BuyRecipe: "buyRecipe",
   /** Server → clients. Payload: DishSpoiledMessage. A dish went bad and was thrown away. */
   DishSpoiled: "dishSpoiled",
-  /** Payload: BuyIngredientMessage. Sent from the phone popup. */
-  BuyIngredient: "buyIngredient",
+  /** Payload: OrderSuppliesMessage. Sent from the phone popup; one order at a time. */
+  OrderSupplies: "orderSupplies",
 } as const;
 
-export interface BuyIngredientMessage {
-  ingredient: IngredientId;
+export interface OrderSuppliesMessage {
+  /** How many packs of each ingredient. */
+  packs: Partial<Record<IngredientId, number>>;
 }
 
 export interface CookMessage {

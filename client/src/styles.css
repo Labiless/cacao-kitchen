@@ -139,6 +139,17 @@ input {
 }
 .shop-item { flex: 1; font-weight: 600; }
 .shop-list button { min-width: 84px; font-variant-numeric: tabular-nums; }
+.stepper { display: flex; align-items: center; gap: 6px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stepper button { min-width: 0; width: 32px; padding: 4px 0; }
+.stepper span { min-width: 16px; text-align: center; }
+.order-total { margin-right: auto; align-self: center; font-weight: 700; }
+.delivery-status {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 15%, white);
+  font-size: 14px;
+}
 .menu-item:disabled { opacity: 0.5; cursor: default; }
 .badge {
   min-width: 84px;
