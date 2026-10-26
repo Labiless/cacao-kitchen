@@ -34,6 +34,9 @@ import {
   INGREDIENTS,
   INGREDIENT_IDS,
   STARTING_MONEY_CENTS,
+  SHIFT,
+  ShiftReport,
+  tipFor,
   STARTING_RECIPES,
   MAX_HELD_INGREDIENTS,
   heldDish,
@@ -92,7 +95,7 @@ import {
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
-/** Delay before the very first customer, so players have a moment to look around. */
+/** Delay before the first customer of a shift, so the cook has a moment to order ingredients. */
 const FIRST_CUSTOMER_DELAY_MS = 3000;
 
 /** Customer statuses that end on their own after a while, and what comes next. */
@@ -113,6 +116,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   /** When each customer in a TIMED_STATUSES status moves on to the next one. */
   private statusEndsAt = new Map<string, number>();
   private nextCustomerAt = 0;
+  /** When the current shift stops letting customers in. */
+  private closesAt = 0;
   /** When the supplier's truck reaches the bay, while a delivery is on the way. */
   private deliveryArrivesAt = 0;
   /** When the step in progress on each appliance is done, by appliance id. */
@@ -122,7 +127,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private ticketCount = 0;
 
   onCreate() {
-    this.nextCustomerAt = this.clock.currentTime + FIRST_CUSTOMER_DELAY_MS;
+    // The room opens on a break: the first shift starts once everyone is ready.
     this.state.money = STARTING_MONEY_CENTS;
     for (const ingredient of INGREDIENT_IDS) this.state.stock.set(ingredient, 0);
     this.state.unlockedRecipes.push(...STARTING_RECIPES);
@@ -153,9 +158,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       if (player && cleaned) player.name = cleaned;
     });
 
-    this.onMessage(Message.Interact, (client) => this.interact(client.sessionId));
+    this.onShiftMessage(Message.Interact, (client) => this.interact(client.sessionId));
 
-    this.onMessage(Message.PlaceOrder, (client, message: PlaceOrderMessage) => {
+    this.onShiftMessage(Message.PlaceOrder, (client, message: PlaceOrderMessage) => {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
       const slot = freeTicketSlot(this.state);
       if (!customer || !isMenuItem(message?.item) || slot === null) return;
@@ -174,19 +179,26 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.setCustomerStatus(customer, "waitingFood");
     });
 
+    this.onMessage(Message.Ready, (client) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || this.state.shift.phase !== "break") return;
+      player.ready = true;
+      this.startShiftIfReady();
+    });
+
     this.onMessage(Message.CancelOrder, (client) => {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
       if (customer) this.stopOrdering(customer);
     });
 
-    this.onMessage(Message.DiscardTicket, (client, message: DiscardTicketMessage) => {
+    this.onShiftMessage(Message.DiscardTicket, (client, message: DiscardTicketMessage) => {
       const player = this.state.players.get(client.sessionId);
       const ticket = this.state.tickets.get(String(message?.ticketId));
       if (player?.role !== "kitchen" || !ticket || !isNearTicketSlot(player, ticket.slot)) return;
       this.state.tickets.delete(ticket.id);
     });
 
-    this.onMessage(Message.TakeIngredient, (client, message: TakeIngredientMessage) => {
+    this.onShiftMessage(Message.TakeIngredient, (client, message: TakeIngredientMessage) => {
       const player = this.state.players.get(client.sessionId);
       const ingredient = message?.ingredient;
       if (player?.role !== "kitchen" || !isIngredient(ingredient)) return;
@@ -207,7 +219,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.state.stock.set(ingredient, stock - 1);
     });
 
-    this.onMessage(Message.PutBackIngredient, (client, message: TakeIngredientMessage) => {
+    this.onShiftMessage(Message.PutBackIngredient, (client, message: TakeIngredientMessage) => {
       const player = this.state.players.get(client.sessionId);
       const ingredient = message?.ingredient;
       const index = player?.holding.indexOf(String(ingredient)) ?? -1;
@@ -217,7 +229,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.state.stock.set(ingredient, (this.state.stock.get(ingredient) ?? 0) + 1);
     });
 
-    this.onMessage(Message.OrderSupplies, (client, message: OrderSuppliesMessage) => {
+    this.onShiftMessage(Message.OrderSupplies, (client, message: OrderSuppliesMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (player?.role !== "kitchen" || !isNearPhone(player) || this.state.delivery.status !== "none") return;
 
@@ -233,6 +245,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       if (order.length === 0 || this.state.money < cost) return;
 
       this.state.money -= cost;
+      this.state.shift.report.ingredientsCents += cost;
       this.state.delivery.items.clear();
       for (const [ingredient, packs] of order) {
         this.state.delivery.items.set(ingredient, INGREDIENTS[ingredient].pack.units * packs);
@@ -242,7 +255,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.deliveryArrivesAt = this.clock.currentTime + (min + Math.random() * (max - min)) * 1000;
     });
 
-    this.onMessage(Message.StartRecipe, (client, message: StartRecipeMessage) => {
+    this.onShiftMessage(Message.StartRecipe, (client, message: StartRecipeMessage) => {
       const player = this.state.players.get(client.sessionId);
       const appliance = this.state.appliances.get(String(message?.applianceId));
       const dish = message?.dish;
@@ -258,7 +271,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.startStep(appliance, dish, 0);
     });
 
-    this.onMessage(Message.BuyRecipe, (client, message: BuyRecipeMessage) => {
+    this.onShiftMessage(Message.BuyRecipe, (client, message: BuyRecipeMessage) => {
       const player = this.state.players.get(client.sessionId);
       const recipe = message?.recipe;
       if (player?.role !== "hall" || !isNearRecipeBook(player) || !isMenuItem(recipe)) return;
@@ -267,10 +280,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       // The kitchen needs the appliances first.
       if (missingEquipment(this.state, recipe).length) return;
       this.state.money -= price;
+      this.state.shift.report.improvementsCents += price;
       this.state.unlockedRecipes.push(recipe);
     });
 
-    this.onMessage(Message.BuyEquipment, (client, message: BuyEquipmentMessage) => {
+    this.onShiftMessage(Message.BuyEquipment, (client, message: BuyEquipmentMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (player?.role !== "hall" || !isNearComputer(player) || !isEquipment(message?.item)) return;
       const { priceCents } = EQUIPMENT[message.item];
@@ -278,6 +292,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       if (!canPlaceEquipment(this.state, message.col, message.row)) return;
 
       this.state.money -= priceCents;
+      this.state.shift.report.improvementsCents += priceCents;
       this.addAppliance(message.item, message.col, message.row);
     });
 
@@ -286,14 +301,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   onJoin(client: Client, options: JoinOptions) {
     const role = this.pickRole(options?.role);
-    const zone = zoneFor(role);
-
     const player = new Player();
     player.role = role;
     player.name = cleanName(options?.name) || ROLE_INFO[role].label;
     player.color = ROLE_INFO[role].color;
-    player.x = (zone.minX + zone.maxX) / 2;
-    player.y = WORLD.height / 2;
+    this.moveToStart(player);
 
     this.state.players.set(client.sessionId, player);
     this.heldKeys.set(client.sessionId, NO_INPUT);
@@ -312,6 +324,90 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.state.players.delete(client.sessionId);
     this.heldKeys.delete(client.sessionId);
     this.actionEndsAt.delete(client.sessionId);
+    // Whoever is left may have been waiting only for them.
+    this.startShiftIfReady();
+  }
+
+  /** Like onMessage, but drops the message between shifts: nothing can be done while the report is up. */
+  private onShiftMessage<T>(type: string, handler: (client: Client, message: T) => void) {
+    this.onMessage(type, (client, message: T) => {
+      if (this.state.shift.phase !== "break") handler(client, message);
+    });
+  }
+
+  /** In the middle of their side of the map. */
+  private moveToStart(player: Player) {
+    const zone = zoneFor(player.role);
+    player.x = (zone.minX + zone.maxX) / 2;
+    player.y = WORLD.height / 2;
+  }
+
+  private startShiftIfReady() {
+    const players = [...this.state.players.values()];
+    if (this.state.shift.phase === "break" && players.length && players.every((p) => p.ready)) this.startShift();
+  }
+
+  /**
+   * A new day: money, appliances and recipes carry over, everything else starts fresh. Yesterday's
+   * food is gone (stock, deliveries, dishes in progress), so ingredients have to be ordered again.
+   */
+  private startShift() {
+    const { shift } = this.state;
+    shift.day++;
+    shift.phase = "open";
+    shift.secondsLeft = SHIFT.durationS;
+    shift.report = new ShiftReport();
+    this.closesAt = this.clock.currentTime + SHIFT.durationS * 1000;
+    this.nextCustomerAt = this.clock.currentTime + FIRST_CUSTOMER_DELAY_MS;
+
+    for (const ingredient of this.state.stock.keys()) this.state.stock.set(ingredient, 0);
+    this.state.delivery.status = "none";
+    this.state.delivery.items.clear();
+    this.state.tickets.clear();
+    this.state.pass.clear();
+    this.state.queue.clear();
+    this.state.customers.clear();
+    this.statusEndsAt.clear();
+    for (const table of this.state.tables.values()) table.status = "free";
+    for (const appliance of this.state.appliances.values()) {
+      appliance.status = "idle";
+      appliance.dish = "";
+      appliance.step = 0;
+      appliance.freshness = 0;
+    }
+    this.applianceReadyAt.clear();
+    this.state.players.forEach((player, sessionId) => {
+      player.ready = false;
+      player.holding.clear();
+      player.freshness = 0;
+      this.clearAction(sessionId, player);
+      this.moveToStart(player);
+    });
+  }
+
+  /** Everyone has left and the hall is clean: wages and bills are paid and the report goes up. */
+  private endShift() {
+    const { shift } = this.state;
+    const { report } = shift;
+    report.staffCents = SHIFT.staffCents;
+    // The fridge isn't in the appliances map but uses electricity too.
+    report.billsCents = (this.state.appliances.size + 1) * SHIFT.billPerApplianceCents;
+    this.state.money -= report.staffCents + report.billsCents;
+    shift.phase = "break";
+    shift.secondsLeft = 0;
+  }
+
+  /** Runs the shift clock: open → closing when time's up, closing → break once the restaurant is empty. */
+  private updateShift() {
+    const { shift } = this.state;
+    if (shift.phase === "open") {
+      const left = Math.max(0, Math.ceil((this.closesAt - this.clock.currentTime) / 1000));
+      if (left !== shift.secondsLeft) shift.secondsLeft = left;
+      if (left === 0) shift.phase = "closing";
+    } else if (shift.phase === "closing") {
+      const dirty = [...this.state.tables.values()].some((table) => table.status !== "free");
+      if (this.state.customers.size === 0 && !dirty) this.endShift();
+    }
   }
 
   private addAppliance(kind: EquipmentId, col: number, row: number) {
@@ -415,6 +511,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         player.freshness = 0;
         if (interaction.dish === customer.wants) {
           customer.bill += MENU[interaction.dish].priceCents;
+          // The more patience they had left, the bigger the tip.
+          customer.tip += tipFor(MENU[interaction.dish].priceCents, customer.patience);
           this.setCustomerStatus(customer, "eating");
         } else {
           // Not what they asked for: they storm out.
@@ -457,7 +555,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         break;
       case "checkout": {
         const customer = this.state.customers.get(player.actionTarget)!;
-        this.state.money += customer.bill;
+        const { report } = this.state.shift;
+        this.state.money += customer.bill + customer.tip;
+        report.salesCents += customer.bill;
+        report.tipsCents += customer.tip;
+        report.paid++;
         this.sendAway(customer);
         break;
       }
@@ -496,6 +598,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   }
 
   private update(dt: number) {
+    this.updateShift();
     this.state.players.forEach((player, sessionId) => {
       this.movePlayer(player, this.heldKeys.get(sessionId) ?? NO_INPUT, dt);
       this.updateAction(sessionId, player);
@@ -581,9 +684,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   private updateCustomers(dt: number) {
     const now = this.clock.currentTime;
-    // Customers turn up at random intervals while someone can serve them and there's room in line.
+    // Customers turn up at random intervals while the restaurant is open, someone can serve them and
+    // there's room in line.
     const hasWaiter = [...this.state.players.values()].some((p) => p.role === "hall");
-    if (hasWaiter && entranceLine(this.state).length < ENTRANCE_LINE_LENGTH && now >= this.nextCustomerAt) {
+    if (this.state.shift.phase === "open" && hasWaiter && entranceLine(this.state).length < ENTRANCE_LINE_LENGTH && now >= this.nextCustomerAt) {
       this.spawnCustomer();
       const { min, max } = CUSTOMER_TIMING.spawnIntervalS;
       this.nextCustomerAt = now + (min + Math.random() * (max - min)) * 1000;
@@ -713,6 +817,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   /** Marks the customer as leaving, then removes them. Their ticket stays. */
   private sendAway(customer: Customer) {
+    // Patience 0: they left unhappy, without paying.
+    if (customer.patience === 0) this.state.shift.report.lost++;
     customer.status = "leaving";
     customer.waiterId = "";
     this.statusEndsAt.delete(customer.id);

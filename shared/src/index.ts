@@ -58,6 +58,8 @@ export const Message = {
   DishSpoiled: "dishSpoiled",
   /** Payload: OrderSuppliesMessage. Sent from the phone popup; one order at a time. */
   OrderSupplies: "orderSupplies",
+  /** No payload. Between shifts: this player is ready for the next one. */
+  Ready: "ready",
 } as const;
 
 export interface OrderSuppliesMessage {
@@ -127,3 +129,4 @@ export * from "./hall.ts";
 export * from "./kitchen.ts";
 export * from "./actions.ts";
 export * from "./menu.ts";
+export * from "./shift.ts";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { attendedCustomer, formatMoney, type EquipmentId, type MenuItemId } from "@cacao/shared";
+import { attendedCustomer, formatClock, formatMoney, type EquipmentId, type MenuItemId } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
 import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, START_PLACEMENT_EVENT, createGame, type ScenePopup } from "../game/createGame.ts";
@@ -12,6 +12,7 @@ import { useRoomState } from "./useRoomState.ts";
 import { NameDialog } from "./NameDialog.tsx";
 import { OrderDialog } from "./OrderDialog.tsx";
 import { TicketDialog } from "./TicketDialog.tsx";
+import { ShiftDialog } from "./ShiftDialog.tsx";
 
 interface Props {
   room: KitchenRoom;
@@ -25,6 +26,9 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const gameRef = useRef<ReturnType<typeof createGame> | null>(null);
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
   const money = useRoomState(room, (state) => state.money);
+  const day = useRoomState(room, (state) => state.shift.day);
+  const phase = useRoomState(room, (state) => state.shift.phase);
+  const secondsLeft = useRoomState(room, (state) => state.shift.secondsLeft);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
   /** Popup opened from the scene (a ticket, the fridge or freezer, an appliance, the phone, the computer, the recipe book), if any. */
   const [popup, setPopup] = useState<ScenePopup | null>(null);
@@ -40,10 +44,15 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
     };
   }, [room]);
 
-  // Tell the scene when a React-only popup is open, so the player stands still.
+  // The shift is over: whatever was open is closed, the report takes over.
   useEffect(() => {
-    gameRef.current?.registry.set(MODAL_OPEN_KEY, popup !== null);
-  }, [popup]);
+    if (phase === "break") setPopup(null);
+  }, [phase]);
+
+  // Tell the scene when a React-only popup is open (or the shift report is up), so the player stands still.
+  useEffect(() => {
+    gameRef.current?.registry.set(MODAL_OPEN_KEY, popup !== null || phase === "break");
+  }, [popup, phase]);
 
   const closePopup = useCallback(() => setPopup(null), []);
 
@@ -90,7 +99,17 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
     <div className="game-layout">
       <div className="game-container" ref={containerRef} />
 
-      <div className="money" title="Cassa del ristorante">💰 {formatMoney(money)}</div>
+      <div className="hud">
+        <div className="money" title="Cassa del ristorante">💰 {formatMoney(money)}</div>
+        {phase === "open" && (
+          <div className={secondsLeft <= 30 ? "shift-clock ending" : "shift-clock"} title="Tempo alla chiusura">
+            Turno {day} · ⏱ {formatClock(secondsLeft)}
+          </div>
+        )}
+        {phase === "closing" && (
+          <div className="shift-clock ending">Turno {day} · 🚪 Chiuso: servi gli ultimi clienti e pulisci i tavoli</div>
+        )}
+      </div>
 
       <button
         className="room-code"
@@ -111,6 +130,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
       {popup?.kind === "computer" && <ComputerDialog room={room} onBuy={startPlacement} onClose={closePopup} />}
       {popup?.kind === "recipeBook" && <RecipeBookDialog room={room} onClose={closePopup} />}
       {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
+      {phase === "break" && !askName && <ShiftDialog room={room} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
     </div>
   );

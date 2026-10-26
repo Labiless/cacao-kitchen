@@ -4,6 +4,7 @@ import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
 import type { MenuItemId } from "./menu.ts";
 import type { ApplianceStatus, DeliveryStatus, EquipmentId } from "./kitchen.ts";
+import type { ShiftPhase } from "./shift.ts";
 
 export const Player = schema({
   name: t.string(),
@@ -22,6 +23,8 @@ export const Player = schema({
   holding: t.array("string"),
   /** Freshness of the dish they carry: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
   freshness: t.number().default(0),
+  /** Between shifts: whether they've said they're ready for the next one. */
+  ready: t.boolean().default(false),
 }, "Player");
 export type Player = SchemaType<typeof Player>;
 
@@ -48,6 +51,8 @@ export const Customer = schema({
   wants: t.string<MenuItemId>(),
   /** What they owe for what they've been served, in cents; paid at the till. */
   bill: t.number().default(0),
+  /** Tip they'll leave on top of the bill, in cents; set when served. See tipFor. */
+  tip: t.number().default(0),
 }, "Customer");
 export type Customer = SchemaType<typeof Customer>;
 
@@ -99,6 +104,34 @@ export const Delivery = schema({
 }, "Delivery");
 export type Delivery = SchemaType<typeof Delivery>;
 
+/** The money in and out over one shift, in cents, plus how the customers went. */
+export const ShiftReport = schema({
+  salesCents: t.number().default(0),
+  tipsCents: t.number().default(0),
+  /** Ingredient orders on the phone. */
+  ingredientsCents: t.number().default(0),
+  /** Appliances and recipes. */
+  improvementsCents: t.number().default(0),
+  /** Wages and bills: charged when the shift ends. */
+  staffCents: t.number().default(0),
+  billsCents: t.number().default(0),
+  /** Customers who paid, and customers who left unhappy without paying. */
+  paid: t.number().default(0),
+  lost: t.number().default(0),
+}, "ShiftReport");
+export type ShiftReport = SchemaType<typeof ShiftReport>;
+
+export const Shift = schema({
+  /** Number of the current shift, or of the one just finished during a break; 0 before the first. */
+  day: t.number().default(0),
+  phase: t.string<ShiftPhase>().default("break"),
+  /** Time left before closing, while open. */
+  secondsLeft: t.number().default(0),
+  /** For the current shift, or the one just finished during a break. */
+  report: ShiftReport,
+}, "Shift");
+export type Shift = SchemaType<typeof Shift>;
+
 export const KitchenState = schema({
   players: t.map(Player),
   tables: t.map(Table),
@@ -117,5 +150,6 @@ export const KitchenState = schema({
   delivery: Delivery,
   /** Menu items whose recipe the restaurant knows: the menu. Customers order from these, stock or no stock. */
   unlockedRecipes: t.array("string"),
+  shift: Shift,
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;
