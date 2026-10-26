@@ -6,15 +6,16 @@
  * open    → on the clock: customers come in
  * closing → time's up: nobody new comes in, the shift ends once everyone inside has left and the
  *           tables are clean
+ * gameOver → a shift ended with the till in the red: the only way on is starting over
  */
-export const SHIFT_PHASES = ["break", "open", "closing"] as const;
+export const SHIFT_PHASES = ["break", "open", "closing", "gameOver"] as const;
 export type ShiftPhase = (typeof SHIFT_PHASES)[number];
 
 export const SHIFT = {
   /** How long the restaurant stays open to new customers. */
   durationS: 300,
-  /** Wages of the cook and the waiter, paid at the end of every shift. */
-  staffCents: 2000,
+  /** Wages, paid at the end of every shift. Nothing yet: there's no staff to hire. */
+  staffCents: 0,
   /** Electricity, paid at the end of every shift for each appliance, the fridge included. */
   billPerApplianceCents: 100,
   /** Largest tip, as a share of the bill: left by a customer served with all their patience intact. */

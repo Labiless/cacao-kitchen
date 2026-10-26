@@ -11,6 +11,7 @@ import {
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { useRoomState } from "./useRoomState.ts";
+import { sounds } from "../game/Sounds.ts";
 
 interface Props {
   room: KitchenRoom;
@@ -47,6 +48,7 @@ export function PhoneDialog({ room, onClose }: Props) {
 
   function order() {
     if (!canOrder) return;
+    sounds.play("phone", -0.6);
     room.send(Message.OrderSupplies, { packs } satisfies OrderSuppliesMessage);
     setPacks({});
   }

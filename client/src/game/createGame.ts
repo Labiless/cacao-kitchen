@@ -4,6 +4,7 @@ import type { KitchenRoom } from "../network.ts";
 import { KitchenScene } from "./KitchenScene.ts";
 
 export { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, START_PLACEMENT_EVENT, type ScenePopup } from "./KitchenScene.ts";
+export type { PlacementItem } from "./Placement.ts";
 
 export function createGame(parent: HTMLElement, room: KitchenRoom) {
   return new Phaser.Game({

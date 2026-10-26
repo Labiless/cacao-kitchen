@@ -3,7 +3,7 @@
 import {
   INTERACT_DISTANCE,
   PLAYER_SIZE,
-  PLAYER_SPEED,
+  WAITER_SPEED,
   WALL,
   WORLD,
   isNearBox,
@@ -65,7 +65,7 @@ export const QUEUE_SPOTS = Array.from({ length: TABLE_LAYOUT.length }, (_, i) =>
 export const CUSTOMER_SIZE = 30;
 export const CUSTOMER_COLOR = "#b5577a";
 /** Same as the waiter, so a led customer keeps up. */
-export const CUSTOMER_SPEED = PLAYER_SPEED;
+export const CUSTOMER_SPEED = WAITER_SPEED;
 /** Gap (px) a led customer keeps between their edge and the waiter's. */
 export const FOLLOW_GAP = 6;
 
@@ -185,16 +185,16 @@ export const FULL_DECOR_BEAUTY = 20;
 export const DECORATION_SIZE = 32;
 
 /**
- * Spots in the hall where a decoration can go, one each: along the walls and in the middle of the
- * tables, clear of the tables, the lines, the till, the computer, the recipe book and the pass.
+ * Spots in the hall where a decoration can go, one each: along the walls, clear of the tables, the
+ * lines, the till, the computer, the recipe book and the pass, and out of the way between them.
  */
 export const DECORATION_SLOTS: readonly Point[] = [
   { x: 380, y: 24 },
+  { x: 470, y: 24 },
   { x: 660, y: 24 },
   { x: WALL.x + WALL.thickness / 2 + 20, y: 70 },
   { x: WALL.x + WALL.thickness / 2 + 20, y: 150 },
   { x: WALL.x + WALL.thickness / 2 + 20, y: 565 },
-  { x: 540, y: 255 },
   { x: WORLD.width - 22, y: 300 },
   { x: WORLD.width - 22, y: 420 },
   { x: 420, y: 570 },

@@ -3,7 +3,7 @@
 // in ./hall.ts, the kitchen layout in ./kitchen.ts, what a player can do (timed actions, E interactions)
 // in ./actions.ts, the menu in ./menu.ts.
 
-import { PLAYER_SIZE, WALL, WORLD } from "./world.ts";
+import { PLAYER_SIZE, PLAYER_SPEED, WAITER_SPEED, WALL, WORLD } from "./world.ts";
 import type { IngredientId, MenuItemId } from "./menu.ts";
 import type { EquipmentId } from "./kitchen.ts";
 import type { DecorationId } from "./hall.ts";
@@ -15,9 +15,10 @@ export const SERVER_PORT = 2567;
 export const ROLES = ["kitchen", "hall"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const ROLE_INFO: Record<Role, { label: string; area: string; color: string }> = {
-  kitchen: { label: "Cuoco", area: "Cucina", color: "#e8833a" },
-  hall: { label: "Cameriere", area: "Sala", color: "#3aa7a3" },
+export const ROLE_INFO: Record<Role, { label: string; area: string; color: string; speed: number }> = {
+  kitchen: { label: "Cuoco", area: "Cucina", color: "#e8833a", speed: PLAYER_SPEED },
+  // The hall is bigger, so the waiter moves faster.
+  hall: { label: "Cameriere", area: "Sala", color: "#3aa7a3", speed: WAITER_SPEED },
 };
 
 export function isRole(value: unknown): value is Role {
@@ -55,14 +56,14 @@ export const Message = {
   BuyEquipment: "buyEquipment",
   /** Payload: BuyDecorationMessage. Sent when the waiter places a decoration they bought on the computer. */
   BuyDecoration: "buyDecoration",
-  /** Payload: BuyRecipeMessage. Sent from the recipe book. */
-  BuyRecipe: "buyRecipe",
   /** Server → clients. Payload: DishSpoiledMessage. A dish went bad and was thrown away. */
   DishSpoiled: "dishSpoiled",
   /** Payload: OrderSuppliesMessage. Sent from the phone popup; one order at a time. */
   OrderSupplies: "orderSupplies",
   /** No payload. Between shifts: this player is ready for the next one. */
   Ready: "ready",
+  /** No payload. Starts the whole game over, from the first shift. */
+  Restart: "restart",
 } as const;
 
 export interface OrderSuppliesMessage {
@@ -79,10 +80,6 @@ export interface BuyDecorationMessage {
   item: DecorationId;
   /** Index into DECORATION_SLOTS. */
   slot: number;
-}
-
-export interface BuyRecipeMessage {
-  recipe: MenuItemId;
 }
 
 export interface DishSpoiledMessage {
@@ -140,3 +137,4 @@ export * from "./actions.ts";
 export * from "./menu.ts";
 export * from "./shift.ts";
 export * from "./reviews.ts";
+export * from "./progress.ts";

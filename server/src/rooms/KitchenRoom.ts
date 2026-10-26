@@ -12,7 +12,6 @@ import {
   MENU,
   Message,
   PLAYER_SIZE,
-  PLAYER_SPEED,
   Player,
   QUEUE_SPOTS,
   RECIPES,
@@ -35,6 +34,7 @@ import {
   INGREDIENT_IDS,
   STARTING_MONEY_CENTS,
   SHIFT,
+  levelForXp,
   ShiftReport,
   tipFor,
   REVIEWED_WAITS,
@@ -47,7 +47,6 @@ import {
   overlapsDecorations,
   type BuyDecorationMessage,
   type ReviewedWait,
-  STARTING_RECIPES,
   MAX_HELD_INGREDIENTS,
   heldDish,
   heldPrep,
@@ -60,8 +59,6 @@ import {
   DELIVERY,
   isNearAppliance,
   isNearComputer,
-  isNearRecipeBook,
-  missingEquipment,
   prepItem,
   readyMadeDish,
   unlockedIngredients,
@@ -91,7 +88,6 @@ import {
   type StartRecipeMessage,
   type CustomerStatus,
   type BuyEquipmentMessage,
-  type BuyRecipeMessage,
   type DishSpoiledMessage,
   type OrderSuppliesMessage,
   type DiscardTicketMessage,
@@ -152,7 +148,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     // The room opens on a break: the first shift starts once everyone is ready.
     this.state.money = STARTING_MONEY_CENTS;
     for (const ingredient of INGREDIENT_IDS) this.state.stock.set(ingredient, 0);
-    this.state.unlockedRecipes.push(...STARTING_RECIPES);
     for (const { kind, col, row } of STARTING_EQUIPMENT) this.addAppliance(kind, col, row);
 
     for (const { id, x, y } of TABLE_LAYOUT) {
@@ -207,6 +202,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       player.ready = true;
       this.startShiftIfReady();
     });
+
+    // Anyone can start over, at any time (the client asks for confirmation first).
+    this.onMessage(Message.Restart, () => this.restartGame());
 
     this.onMessage(Message.CancelOrder, (client) => {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
@@ -293,19 +291,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.startStep(appliance, dish, 0);
     });
 
-    this.onShiftMessage(Message.BuyRecipe, (client, message: BuyRecipeMessage) => {
-      const player = this.state.players.get(client.sessionId);
-      const recipe = message?.recipe;
-      if (player?.role !== "hall" || !isNearRecipeBook(player) || !isMenuItem(recipe)) return;
-      const price = RECIPES[recipe].unlockPriceCents;
-      if (price === undefined || this.state.unlockedRecipes.includes(recipe) || this.state.money < price) return;
-      // The kitchen needs the appliances first.
-      if (missingEquipment(this.state, recipe).length) return;
-      this.state.money -= price;
-      this.state.shift.report.improvementsCents += price;
-      this.state.unlockedRecipes.push(recipe);
-    });
-
     this.onShiftMessage(Message.BuyDecoration, (client, message: BuyDecorationMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (player?.role !== "hall" || !isNearComputer(player) || !isDecoration(message?.item)) return;
@@ -365,10 +350,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.startShiftIfReady();
   }
 
-  /** Like onMessage, but drops the message between shifts: nothing can be done while the report is up. */
+  /** Like onMessage, but drops the message outside a shift: nothing can be done while a report is up. */
   private onShiftMessage<T>(type: string, handler: (client: Client, message: T) => void) {
     this.onMessage(type, (client, message: T) => {
-      if (this.state.shift.phase !== "break") handler(client, message);
+      const { phase } = this.state.shift;
+      if (phase === "open" || phase === "closing") handler(client, message);
     });
   }
 
@@ -396,7 +382,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     shift.report = new ShiftReport();
     this.closesAt = this.clock.currentTime + SHIFT.durationS * 1000;
     this.nextCustomerAt = this.clock.currentTime + FIRST_CUSTOMER_DELAY_MS;
+    this.clearDay();
+  }
 
+  /** Everything that doesn't carry over from one shift to the next: food, customers, tickets, hands. */
+  private clearDay() {
     for (const ingredient of this.state.stock.keys()) this.state.stock.set(ingredient, 0);
     this.state.delivery.status = "none";
     this.state.delivery.items.clear();
@@ -431,6 +421,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     // The fridge isn't in the appliances map but uses electricity too.
     report.billsCents = (this.state.appliances.size + 1) * SHIFT.billPerApplianceCents;
     this.state.money -= report.staffCents + report.billsCents;
+    // In the red: the restaurant closes for good.
+    const bankrupt = this.state.money < 0;
 
     // The shift's score joins the restaurant's average; a shift without reviews doesn't count.
     if (report.ratingCount) {
@@ -438,8 +430,26 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.state.stars = (this.state.stars * this.state.ratedShifts + score) / (this.state.ratedShifts + 1);
       this.state.ratedShifts++;
     }
-    shift.phase = "break";
+    shift.phase = bankrupt ? "gameOver" : "break";
     shift.secondsLeft = 0;
+  }
+
+  /** A brand new restaurant, as when the room was created; the players stay. */
+  private restartGame() {
+    const { state } = this;
+    state.money = STARTING_MONEY_CENTS;
+    state.xp = 0;
+    state.level = 1;
+    state.stars = 0;
+    state.ratedShifts = 0;
+    state.decorations.clear();
+    state.appliances.clear();
+    for (const { kind, col, row } of STARTING_EQUIPMENT) this.addAppliance(kind, col, row);
+    state.shift.day = 0;
+    state.shift.phase = "break";
+    state.shift.secondsLeft = 0;
+    state.shift.report = new ShiftReport();
+    this.clearDay();
   }
 
   /** Runs the shift clock: open → closing when time's up, closing → break once the restaurant is empty. */
@@ -607,6 +617,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         report.tipsCents += customer.tip;
         report.paid++;
         this.sendAway(customer);
+        // As much experience as the stars they just gave (sendAway sets the review).
+        this.state.xp += customer.rating;
+        report.xp += customer.rating;
+        this.state.level = levelForXp(this.state.xp);
         break;
       }
       case "receiveDelivery": {
@@ -714,9 +728,10 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     // One axis at a time, so a player blocked by an obstacle can still slide along it.
     const zone = zoneFor(player.role);
     const half = PLAYER_SIZE / 2;
-    const nextX = clamp(player.x + dx * PLAYER_SPEED * dt, zone.minX, zone.maxX);
+    const speed = ROLE_INFO[player.role].speed;
+    const nextX = clamp(player.x + dx * speed * dt, zone.minX, zone.maxX);
     if (!this.hitsObstacle(nextX, player.y)) player.x = nextX;
-    const nextY = clamp(player.y + dy * PLAYER_SPEED * dt, half, WORLD.height - half);
+    const nextY = clamp(player.y + dy * speed * dt, half, WORLD.height - half);
     if (!this.hitsObstacle(player.x, nextY)) player.y = nextY;
   }
 

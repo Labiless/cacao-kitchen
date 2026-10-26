@@ -19,6 +19,9 @@ import {
   EQUIPMENT,
   COMPUTER,
   DELIVERY_BAY,
+  DECORATIONS,
+  DECORATION_SIZE,
+  DECORATION_SLOTS,
   RECIPE_BOOK,
   Message,
   PLAYER_SIZE,
@@ -43,15 +46,15 @@ import {
   type InputState,
   type Interaction,
   type DishSpoiledMessage,
-  type EquipmentId,
-  type HeldItem,
+    type HeldItem,
   type Player,
   type Role,
   type Appliance,
   type Table,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
-import { EquipmentPlacement } from "./EquipmentPlacement.ts";
+import { Placement, type PlacementItem } from "./Placement.ts";
+import { sounds, type SoundName } from "./Sounds.ts";
 
 interface PlayerSprite {
   body: Phaser.GameObjects.Rectangle;
@@ -100,7 +103,7 @@ export type ScenePopup =
   | { kind: "recipeBook" };
 /** Game event asking React to open a popup; the payload is a ScenePopup. */
 export const OPEN_POPUP_EVENT = "openPopup";
-/** Game event from React to start placing bought equipment in the kitchen; the payload is an EquipmentId. */
+/** Game event from React to start placing something bought on the computer; the payload is a PlacementItem. */
 export const START_PLACEMENT_EVENT = "startPlacement";
 /** Registry key React sets while one of its popups is open, so the scene ignores movement and E. */
 export const MODAL_OPEN_KEY = "modalOpen";
@@ -121,7 +124,9 @@ export class KitchenScene extends Phaser.Scene {
   private tickets = new Map<string, Phaser.GameObjects.Rectangle>();
   private fridge!: Phaser.GameObjects.Rectangle;
   private appliances = new Map<string, ApplianceSprite>();
-  private placement!: EquipmentPlacement;
+  private placement!: Placement;
+  /** Decorations in the hall, by id. */
+  private decorations = new Map<string, Phaser.GameObjects.Text>();
   private pass!: Phaser.GameObjects.Rectangle;
   private register!: Phaser.GameObjects.Rectangle;
   private phone!: Phaser.GameObjects.Rectangle;
@@ -140,6 +145,15 @@ export class KitchenScene extends Phaser.Scene {
   private hint!: Phaser.GameObjects.Text;
   private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
   private lastInput: InputState = NO_INPUT;
+  /**
+   * False while the state callbacks replay what's already in the room on joining: only changes that
+   * happen while playing make a sound.
+   */
+  private live = false;
+  /** What the local player carried last frame, to hear them pick something up. */
+  private heldCount = 0;
+  /** Dishes on the pass last frame, to ring the bell when one is added. */
+  private passCount = 0;
 
   constructor(private room: KitchenRoom) {
     super("kitchen");
@@ -202,9 +216,12 @@ export class KitchenScene extends Phaser.Scene {
     // E or the space bar.
     this.input.keyboard!.on("keydown-E", () => this.interact());
     this.input.keyboard!.on("keydown-SPACE", () => this.interact());
+    // Browsers only start audio after a gesture.
+    this.input.keyboard!.on("keydown", () => sounds.unlock());
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, () => sounds.unlock());
 
-    this.placement = new EquipmentPlacement(this, this.room, Depth.Overlay);
-    const startPlacement = (item: EquipmentId) => this.placement.start(item);
+    this.placement = new Placement(this, this.room, Depth.Overlay);
+    const startPlacement = (item: PlacementItem) => this.placement.start(item);
     this.game.events.on(START_PLACEMENT_EVENT, startPlacement);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(START_PLACEMENT_EVENT, startPlacement));
 
@@ -230,17 +247,23 @@ export class KitchenScene extends Phaser.Scene {
         unsubscribe.push(callbacks.listen(player, "action", (action) => {
           if (action) this.actionStartedAt.set(sessionId, this.time.now);
           else this.actionStartedAt.delete(sessionId);
+          if (action === "cleanTable") this.playSound("wipe", "hall", player.x);
+          if (action === "receiveDelivery") this.playSound("boxes", "kitchen", player.x);
         }));
       }),
       callbacks.onRemove("players", (_player, sessionId) => this.removePlayer(sessionId)),
 
       callbacks.onAdd("tables", (table, id) => {
         this.addTable(id, table);
-        unsubscribe.push(callbacks.listen(table, "status", () => this.refreshTable(id, table)));
+        unsubscribe.push(callbacks.listen(table, "status", (status, previous) => {
+          this.refreshTable(id, table);
+          if (status === "free" && previous === "dirty") this.playSound("sparkle", "hall", table.x);
+        }));
       }),
 
       callbacks.onAdd("customers", (customer, id) => {
         this.addCustomer(id, customer);
+        this.playSound("doorbell", "hall", customer.x);
         unsubscribe.push(callbacks.onChange(customer, () => {
           const sprite = this.customers.get(id);
           if (sprite) sprite.target = { x: customer.x, y: customer.y };
@@ -248,14 +271,33 @@ export class KitchenScene extends Phaser.Scene {
         unsubscribe.push(callbacks.listen(customer, "status", (status) => {
           this.refreshCustomerIcon(id, customer);
           if (status === "leaving") this.showCustomerLeaving(id, customer);
+          this.customerSound(customer);
         }));
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
 
-      this.room.onMessage(Message.DishSpoiled, (message: DishSpoiledMessage) => this.showDishSpoiled(message)),
+      this.room.onMessage(Message.DishSpoiled, (message: DishSpoiledMessage) => {
+        this.showDishSpoiled(message);
+        this.playSound("trash", message.seenBy === "everyone" ? null : message.seenBy, message.x);
+      }),
 
       callbacks.listen("money", (money, previous) => {
-        if (previous !== undefined && money > previous && this.sees("hall")) this.showMoneyIn(money - previous);
+        if (previous !== undefined && money > previous && this.sees("hall")) {
+          this.showMoneyIn(money - previous);
+          this.playSound("register", "hall", REGISTER.x);
+        }
+      }),
+
+      callbacks.listen("level", (level, previous) => {
+        if (previous !== undefined && level > previous) this.playSound("levelUp", null);
+      }),
+
+      callbacks.listen(this.room.state.shift, "phase", (phase, previous) => {
+        if (phase === "open") this.playSound("shiftOpen", null);
+        if (phase === "closing") this.playSound("shiftClosing", null);
+        if (phase === "break" && previous === "closing") this.playSound("shiftEnd", null);
+        if (phase === "gameOver") this.playSound("gameOver", null);
+        if (phase === "break" || phase === "gameOver") sounds.stopAllLoops();
       }),
 
       callbacks.listen(this.room.state.delivery, "status", (status) => {
@@ -263,16 +305,32 @@ export class KitchenScene extends Phaser.Scene {
         const visible = status === "arrived" && this.sees("kitchen");
         this.truck.setVisible(visible);
         this.truckIcon.setVisible(visible);
+        if (status === "arrived") this.playSound("truck", "kitchen", DELIVERY_BAY.x);
       }),
 
       callbacks.onAdd("appliances", (appliance, id) => {
         this.addAppliance(id, appliance);
+        this.playSound("place", null, appliance.x);
         unsubscribe.push(callbacks.listen(appliance, "status", (status) => {
           const sprite = this.appliances.get(id);
           if (!sprite) return;
           if (status === "working") sprite.startedAt = this.time.now;
           this.refreshApplianceIcon(sprite, appliance);
+          this.applianceSound(id, appliance);
         }));
+      }),
+      callbacks.onRemove("appliances", (_appliance, id) => sounds.stopLoop(id)),
+
+      // Everyone sees the decorations: they're part of the room.
+      callbacks.onAdd("decorations", (decoration, id) => {
+        const { x, y } = DECORATION_SLOTS[decoration.slot];
+        const size = `${DECORATION_SIZE - 4}px`;
+        this.decorations.set(id, this.add.text(x, y, DECORATIONS[decoration.kind].emoji, { fontSize: size }).setOrigin(0.5).setDepth(Depth.Table));
+        this.playSound("place", null, x);
+      }),
+      callbacks.onRemove("decorations", (_decoration, id) => {
+        this.decorations.get(id)?.destroy();
+        this.decorations.delete(id);
       }),
 
       callbacks.onAdd("tickets", (ticket, id) => {
@@ -282,13 +340,61 @@ export class KitchenScene extends Phaser.Scene {
           .setDepth(Depth.Table)
           .setVisible(this.sees("kitchen"));
         this.tickets.set(id, slip);
+        this.playSound("ticket", "kitchen", x);
       }),
       callbacks.onRemove("tickets", (_ticket, id) => {
         this.tickets.get(id)?.destroy();
         this.tickets.delete(id);
       }),
     );
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => unsubscribe.forEach((off) => off()));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      unsubscribe.forEach((off) => off());
+      sounds.stopAllLoops();
+    });
+    this.live = true;
+  }
+
+  /**
+   * Plays a sound for whoever works on `side` (null: both), panned to where it happens on the map.
+   * Silent while the room's existing state is being replayed on joining.
+   */
+  private playSound(name: SoundName, side: Role | null, x = WORLD.width / 2) {
+    if (!this.live || (side && !this.sees(side))) return;
+    sounds.play(name, this.panFor(x));
+  }
+
+  /** Stereo position for something at `x`: a bit to the left in the kitchen, to the right in the hall. */
+  private panFor(x: number) {
+    return ((x / WORLD.width) * 2 - 1) * 0.6;
+  }
+
+  /** What the waiter hears as a customer moves on: led, seated, order sent, served, gone. */
+  private customerSound(customer: Customer) {
+    const { x } = customer;
+    switch (customer.status) {
+      case "following": this.playSound("pop", "hall", x); break;
+      case "readingMenu": this.playSound("chair", "hall", x); break;
+      case "waitingFood": this.playSound("scribble", "hall", x); break;
+      case "eating": this.playSound("serve", "hall", x); break;
+      case "leaving":
+        if (!this.live || !this.sees("hall")) break;
+        if (customer.rating) sounds.playStars(customer.rating, this.panFor(x));
+        else if (customer.patience === 0) sounds.play("angry", this.panFor(x));
+        break;
+    }
+  }
+
+  /** The cook hears every appliance at work, a click when a step starts and the timer when it's done. */
+  private applianceSound(id: string, appliance: Appliance) {
+    if (!this.sees("kitchen")) return;
+    if (appliance.status === "working") {
+      // Also when joining mid-step: the loop is the appliance's state, not an event.
+      sounds.startLoop(id, appliance.kind, this.panFor(appliance.x));
+      this.playSound("stepStart", "kitchen", appliance.x);
+    } else {
+      sounds.stopLoop(id);
+      if (appliance.status === "ready") this.playSound("stepDone", "kitchen", appliance.x);
+    }
   }
 
   update(_time: number, delta: number) {
@@ -311,12 +417,26 @@ export class KitchenScene extends Phaser.Scene {
     }
 
     this.refreshPass();
+    this.listenForChanges();
     this.placement.update();
     this.bars.clear();
     this.drawInteractionHint();
     this.drawActionProgress();
     this.drawPatience();
     this.drawFreshness();
+  }
+
+  /** Sounds for changes that have no callback of their own: picking something up, a dish put on the pass. */
+  private listenForChanges() {
+    const me = this.room.state.players.get(this.room.sessionId);
+    const held = me?.holding.length ?? 0;
+    if (held > this.heldCount) this.playSound("pickUp", null, me?.x);
+    this.heldCount = held;
+
+    const onPass = this.room.state.pass.length;
+    // Both sides hear the bell: the cook rings it, the waiter answers it.
+    if (onPass > this.passCount) this.playSound("passBell", null, PASS.x);
+    this.passCount = onPass;
   }
 
   /**
@@ -339,6 +459,11 @@ export class KitchenScene extends Phaser.Scene {
     if (this.placement.active) return;
     const interaction = this.currentInteraction();
     if (!interaction || interaction.kind === "blocked") return;
+    const popupSound: Partial<Record<Interaction["kind"], SoundName>> = {
+      readTicket: "pageFlip", openStorage: "fridge", openPhone: "pickUp", openComputer: "keyboard", openRecipeBook: "pageFlip",
+    };
+    const name = popupSound[interaction.kind];
+    if (name) this.playSound(name, null, this.sprites.get(this.room.sessionId)?.body.x);
     if (interaction.kind === "readTicket") this.openPopup({ kind: "ticket", ticketId: interaction.ticketId });
     else if (interaction.kind === "openStorage") this.openPopup({ kind: "storage", storage: interaction.storage });
     else if (interaction.kind === "openAppliance") this.openPopup({ kind: "appliance", applianceId: interaction.applianceId });

@@ -140,12 +140,20 @@ export function entranceLine(state: KitchenState) {
     .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
 }
 
-/** The restaurant's menu: the items whose recipe has been unlocked, in menu order. */
-export function unlockedMenu(state: KitchenState): MenuItemId[] {
-  return MENU_ITEMS.filter((id) => state.unlockedRecipes.includes(id));
+/** Recipes the restaurant knows at its current level, whether or not it can make them yet. */
+export function knownRecipes(state: KitchenState): MenuItemId[] {
+  return MENU_ITEMS.filter((id) => RECIPES[id].unlockLevel <= state.level);
 }
 
-/** Appliances the kitchen still needs before the recipe can be bought. */
+/**
+ * The restaurant's menu: the recipes it knows and has the appliances for, in menu order. Customers
+ * order from these, stock or no stock.
+ */
+export function unlockedMenu(state: KitchenState): MenuItemId[] {
+  return knownRecipes(state).filter((id) => missingEquipment(state, id).length === 0);
+}
+
+/** Appliances the kitchen still needs before the recipe can go on the menu. */
 export function missingEquipment(state: KitchenState, dish: MenuItemId): EquipmentId[] {
   return recipeEquipment(dish).filter((kind) => !hasEquipment(state, kind));
 }

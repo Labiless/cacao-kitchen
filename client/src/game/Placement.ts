@@ -73,7 +73,7 @@ export class Placement {
     this.item = item;
     this.target = null;
     const size = item.type === "equipment" ? KITCHEN_GRID.cell - 4 : DECORATION_SIZE + 6;
-    this.ghost.setSize(size, size).setDisplaySize(size, size);
+    this.ghost.setSize(size, size);
     const { label, emoji } = item.type === "equipment" ? EQUIPMENT[item.id] : DECORATIONS[item.id];
     this.ghostIcon.setText(emoji);
     const where = item.type === "equipment" ? "una casella libera in cucina" : "un posto libero in sala";

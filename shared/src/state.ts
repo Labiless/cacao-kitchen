@@ -129,6 +129,8 @@ export const ShiftReport = schema({
   /** Customers who paid, and customers who left unhappy without paying. */
   paid: t.number().default(0),
   lost: t.number().default(0),
+  /** Experience earned in the shift. */
+  xp: t.number().default(0),
   /** Sum and number of the reviews left during the shift: the shift's score is their average. */
   ratingSum: t.number().default(0),
   ratingCount: t.number().default(0),
@@ -164,8 +166,9 @@ export const KitchenState = schema({
   /** Units of each ingredient in the fridge or freezer (see INGREDIENTS[id].storage), by IngredientId. */
   stock: t.map("number"),
   delivery: Delivery,
-  /** Menu items whose recipe the restaurant knows: the menu. Customers order from these, stock or no stock. */
-  unlockedRecipes: t.array("string"),
+  /** Experience from happy customers, and the level it gives (see LEVEL_XP): the level decides the recipes known. */
+  xp: t.number().default(0),
+  level: t.number().default(1),
   shift: Shift,
   /** The restaurant's stars: the average score of every shift that got reviews; 0 before the first. */
   stars: t.number().default(0),

@@ -1,8 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { attendedCustomer, formatClock, formatMoney, formatStars, type EquipmentId, type MenuItemId } from "@cacao/shared";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import {
+  EQUIPMENT,
+  MENU,
+  Message,
+  attendedCustomer,
+  formatClock,
+  formatMoney,
+  formatStars,
+  levelRange,
+  missingEquipment,
+  recipesAtLevel,
+  type MenuItemId,
+} from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
-import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, START_PLACEMENT_EVENT, createGame, type ScenePopup } from "../game/createGame.ts";
+import {
+  MODAL_OPEN_KEY,
+  OPEN_POPUP_EVENT,
+  START_PLACEMENT_EVENT,
+  createGame,
+  type PlacementItem,
+  type ScenePopup,
+} from "../game/createGame.ts";
 import { StorageDialog } from "./StorageDialog.tsx";
 import { ApplianceDialog } from "./ApplianceDialog.tsx";
 import { PhoneDialog } from "./PhoneDialog.tsx";
@@ -12,6 +31,7 @@ import { useRoomState } from "./useRoomState.ts";
 import { NameDialog } from "./NameDialog.tsx";
 import { OrderDialog } from "./OrderDialog.tsx";
 import { TicketDialog } from "./TicketDialog.tsx";
+import { sounds } from "../game/Sounds.ts";
 import { ShiftDialog } from "./ShiftDialog.tsx";
 
 interface Props {
@@ -31,9 +51,28 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const secondsLeft = useRoomState(room, (state) => state.shift.secondsLeft);
   const stars = useRoomState(room, (state) => state.stars);
   const ratedShifts = useRoomState(room, (state) => state.ratedShifts);
+  const level = useRoomState(room, (state) => state.level);
+  const xp = useRoomState(room, (state) => state.xp);
+  /** Between shifts, or the game is over: the report is up and nothing else can be done. */
+  const reportUp = phase === "break" || phase === "gameOver";
+  /** "Level N!" notice with the recipes it taught, shown for a few seconds after levelling up. */
+  const [levelUp, setLevelUp] = useState<number | null>(null);
+  const shownLevel = useRef(level);
+  const muted = useSyncExternalStore(subscribeMuted, getMuted);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
   /** Popup opened from the scene (a ticket, the fridge or freezer, an appliance, the phone, the computer, the recipe book), if any. */
   const [popup, setPopup] = useState<ScenePopup | null>(null);
+
+  // Audio can only start after a gesture, and clicks on React buttons count too.
+  useEffect(() => {
+    const unlock = () => sounds.unlock();
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
 
   // Phaser owns the canvas; React only mounts/unmounts it.
   useEffect(() => {
@@ -48,18 +87,38 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
   // The shift is over: whatever was open is closed, the report takes over.
   useEffect(() => {
-    if (phase === "break") setPopup(null);
-  }, [phase]);
+    if (reportUp) setPopup(null);
+  }, [reportUp]);
 
   // Tell the scene when a React-only popup is open (or the shift report is up), so the player stands still.
   useEffect(() => {
-    gameRef.current?.registry.set(MODAL_OPEN_KEY, popup !== null || phase === "break");
-  }, [popup, phase]);
+    gameRef.current?.registry.set(MODAL_OPEN_KEY, popup !== null || reportUp);
+  }, [popup, reportUp]);
+
+  // Announce a new level (not a restart, which takes it back to 1).
+  useEffect(() => {
+    if (level > shownLevel.current) setLevelUp(level);
+    shownLevel.current = level;
+  }, [level]);
+
+  useEffect(() => {
+    if (levelUp === null) return;
+    const timer = setTimeout(() => setLevelUp(null), 6000);
+    return () => clearTimeout(timer);
+  }, [levelUp]);
+
+  function restart(event: MouseEvent<HTMLButtonElement>) {
+    // Drop focus, or the space bar (used to interact) would click it again.
+    event.currentTarget.blur();
+    if (confirm("Ricominciare da capo? Si perdono soldi, livello, stelle, elettrodomestici e decorazioni.")) {
+      room.send(Message.Restart);
+    }
+  }
 
   const closePopup = useCallback(() => setPopup(null), []);
 
-  // Buying on the computer hands over to the scene, where the item is placed on the kitchen grid.
-  const startPlacement = useCallback((item: EquipmentId) => {
+  // Buying on the computer hands over to the scene, where the item is placed in the kitchen or the hall.
+  const startPlacement = useCallback((item: PlacementItem) => {
     setPopup(null);
     gameRef.current?.events.emit(START_PLACEMENT_EVENT, item);
   }, []);
@@ -103,6 +162,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
       <div className="hud">
         <div className="money" title="Cassa del ristorante">💰 {formatMoney(money)}</div>
+        <LevelBadge level={level} xp={xp} />
         {ratedShifts > 0 && (
           <div className="money" title={`Media dei voti di ${ratedShifts} ${ratedShifts === 1 ? "turno" : "turni"}`}>
             ⭐ {formatStars(stars)}
@@ -118,17 +178,36 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
         )}
       </div>
 
-      <button
-        className="room-code"
-        title="Copia il link d'invito"
-        onClick={(event) => {
-          // Drop focus, or the space bar (used to interact) would click it again.
-          event.currentTarget.blur();
-          copyInvite();
-        }}
-      >
-        {copied === "ok" ? "Link copiato!" : copied === "error" ? "Copia non riuscita" : room.roomId}
-      </button>
+      <div className="top-right">
+        <button
+          type="button"
+          className="hud-button"
+          title={muted ? "Attiva l'audio" : "Disattiva l'audio"}
+          aria-pressed={!muted}
+          onClick={(event) => {
+            event.currentTarget.blur();
+            sounds.setMuted(!muted);
+          }}
+        >
+          {muted ? "🔇" : "🔊"}
+        </button>
+        <button type="button" className="hud-button" title="Ricomincia la partita da capo" onClick={restart}>
+          ↺ Ricomincia
+        </button>
+        <button
+          className="room-code"
+          title="Copia il link d'invito"
+          onClick={(event) => {
+            // Drop focus, or the space bar (used to interact) would click it again.
+            event.currentTarget.blur();
+            copyInvite();
+          }}
+        >
+          {copied === "ok" ? "Link copiato!" : copied === "error" ? "Copia non riuscita" : room.roomId}
+        </button>
+      </div>
+
+      {levelUp !== null && <LevelUpNotice room={room} level={levelUp} />}
 
       {popup?.kind === "ticket" && <TicketDialog room={room} ticketId={popup.ticketId} onClose={closePopup} />}
       {popup?.kind === "storage" && <StorageDialog room={room} storage={popup.storage} onClose={closePopup} />}
@@ -137,8 +216,42 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
       {popup?.kind === "computer" && <ComputerDialog room={room} onBuy={startPlacement} onClose={closePopup} />}
       {popup?.kind === "recipeBook" && <RecipeBookDialog room={room} onClose={closePopup} />}
       {ordering && <OrderDialog key={ordering.customerId} room={room} {...ordering} />}
-      {phase === "break" && !askName && <ShiftDialog room={room} />}
+      {reportUp && !askName && <ShiftDialog room={room} />}
       {askName && <NameDialog room={room} onDone={onNameChosen} />}
+    </div>
+  );
+}
+
+const subscribeMuted = (listener: () => void) => sounds.subscribe(listener);
+const getMuted = () => sounds.muted;
+
+/** Level and progress towards the next one. */
+function LevelBadge({ level, xp }: { level: number; xp: number }) {
+  const { from, to } = levelRange(level);
+  const progress = to === null ? 1 : (xp - from) / (to - from);
+  return (
+    <div className="money level" title={to === null ? "Livello massimo" : `${xp - from}/${to - from} punti esperienza al livello ${level + 1}`}>
+      🏅 Livello {level}
+      <span className="xp-bar"><span style={{ width: `${Math.round(progress * 100)}%` }} /></span>
+    </div>
+  );
+}
+
+/** "Level N!" with the recipes just learnt, and what the kitchen still needs to put them on the menu. */
+function LevelUpNotice({ room, level }: { room: KitchenRoom; level: number }) {
+  const recipes = recipesAtLevel(level);
+  return (
+    <div className="toast" role="status">
+      <strong>🎉 Livello {level}!</strong>
+      {recipes.map((id) => {
+        const needs = missingEquipment(room.state, id);
+        return (
+          <span key={id}>
+            Nuova ricetta: {MENU[id].emoji} {MENU[id].label}
+            {needs.length > 0 && ` · serve ${needs.map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}`}
+          </span>
+        );
+      })}
     </div>
   );
 }

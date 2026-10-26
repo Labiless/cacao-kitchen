@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MENU, Message, tableLabel, type DiscardTicketMessage } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { RecipeSteps } from "./RecipeSteps.tsx";
+import { sounds } from "../game/Sounds.ts";
 
 interface Props {
   room: KitchenRoom;
@@ -25,6 +26,7 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
   }, [room, ticketId, onClose]);
 
   function discard() {
+    sounds.play("crumple", -0.4);
     room.send(Message.DiscardTicket, { ticketId } satisfies DiscardTicketMessage);
   }
 

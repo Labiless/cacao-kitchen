@@ -7,7 +7,7 @@ import { EQUIPMENT, type ApplianceKind, type EquipmentId } from "./kitchen.ts";
 export const MENU = {
   cola: { label: "Coca-Cola", emoji: "🥤", priceCents: 500 },
   dhal: { label: "Dhal di lenticchie", emoji: "🍛", priceCents: 1000 },
-  painAuChocolat: { label: "Pain au chocolat", emoji: "🥐", priceCents: 700 },
+  frittata: { label: "Frittata", emoji: "🍳", priceCents: 700 },
   fries: { label: "Patatine fritte", emoji: "🍟", priceCents: 600 },
   coffee: { label: "Caffè", emoji: "☕", priceCents: 300 },
   breadNutella: { label: "Pane con la Nutella", emoji: "🍞", priceCents: 500 },
@@ -15,8 +15,8 @@ export const MENU = {
   tomatoConfit: { label: "Pomodorini confit", emoji: "🫙", priceCents: 900 },
   peanutLeeks: { label: "Porri con burro d'arachidi", emoji: "🥬", priceCents: 1000 },
   veggieBalls: { label: "Polpette vegetariane", emoji: "🧆", priceCents: 1300 },
-  tagliatelle: { label: "Tagliatelle con ragù vegano", emoji: "🍝", priceCents: 1600 },
-  cheesecake: { label: "Cheesecake", emoji: "🍰", priceCents: 1500 },
+  tagliatelle: { label: "Tagliatelle con ragù vegano", emoji: "🍝", priceCents: 2000 },
+  cheesecake: { label: "Cheesecake ai frutti di bosco", emoji: "🍰", priceCents: 1800 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];
@@ -46,8 +46,7 @@ export const INGREDIENTS = {
   cola: { label: "Coca-Cola", emoji: "🥤", storage: "fridge", pack: { units: 6, priceCents: 1000 } },
   lentils: { label: "Lenticchie", emoji: "🥫", storage: "fridge", pack: { units: 3, priceCents: 500 } },
   coconutMilk: { label: "Latte di cocco", emoji: "🥥", storage: "fridge", pack: { units: 3, priceCents: 500 } },
-  puffPastry: { label: "Pasta sfoglia", emoji: "🧈", storage: "fridge", pack: { units: 3, priceCents: 350 } },
-  chocolate: { label: "Cioccolato", emoji: "🍫", storage: "fridge", pack: { units: 3, priceCents: 350 } },
+  eggs: { label: "Uova", emoji: "🥚", storage: "fridge", pack: { units: 6, priceCents: 1400 } },
   frozenFries: { label: "Patatine surgelate", emoji: "❄️", storage: "freezer", pack: { units: 4, priceCents: 800 } },
   groundCoffee: { label: "Caffè macinato", emoji: "🫘", storage: "fridge", pack: { units: 6, priceCents: 600 } },
   bread: { label: "Pane", emoji: "🥖", storage: "fridge", pack: { units: 4, priceCents: 300 } },
@@ -56,11 +55,12 @@ export const INGREDIENTS = {
   cherryTomatoes: { label: "Pomodorini", emoji: "🍅", storage: "fridge", pack: { units: 3, priceCents: 900 } },
   leeks: { label: "Porri", emoji: "🧅", storage: "fridge", pack: { units: 3, priceCents: 500 } },
   peanutButter: { label: "Burro d'arachidi", emoji: "🥜", storage: "fridge", pack: { units: 3, priceCents: 500 } },
-  veganMince: { label: "Macinato vegetale", emoji: "🌱", storage: "fridge", pack: { units: 4, priceCents: 1000 } },
-  carrots: { label: "Carote", emoji: "🥕", storage: "fridge", pack: { units: 3, priceCents: 550 } },
-  freshPasta: { label: "Tagliatelle fresche", emoji: "🌾", storage: "fridge", pack: { units: 3, priceCents: 850 } },
+  veganMince: { label: "Macinato vegetale", emoji: "🌱", storage: "fridge", pack: { units: 3, priceCents: 600 } },
+  carrots: { label: "Carote", emoji: "🥕", storage: "fridge", pack: { units: 3, priceCents: 700 } },
+  freshPasta: { label: "Tagliatelle fresche", emoji: "🌾", storage: "fridge", pack: { units: 3, priceCents: 500 } },
   biscuits: { label: "Biscotti", emoji: "🍪", storage: "fridge", pack: { units: 3, priceCents: 600 } },
-  creamCheese: { label: "Formaggio spalmabile", emoji: "🧀", storage: "fridge", pack: { units: 3, priceCents: 900 } },
+  creamCheese: { label: "Formaggio spalmabile", emoji: "🧀", storage: "fridge", pack: { units: 3, priceCents: 600 } },
+  berries: { label: "Frutti di bosco", emoji: "🫐", storage: "freezer", pack: { units: 3, priceCents: 600 } },
 } as const satisfies Record<string, Ingredient>;
 export type IngredientId = keyof typeof INGREDIENTS;
 export const INGREDIENT_IDS = Object.keys(INGREDIENTS) as IngredientId[];
@@ -77,7 +77,7 @@ export interface RecipeStep {
 }
 
 interface Recipe {
-  /** One or two ingredients, all used up by the first step. */
+  /** One to MAX_HELD_INGREDIENTS ingredients, all used up by the first step. */
   ingredients: IngredientId[];
   /**
    * What to do with them, in order. None means the ingredient is served as it is: taking it out of
@@ -85,39 +85,39 @@ interface Recipe {
    */
   steps: RecipeStep[];
   /**
-   * Price to unlock the recipe in the recipe book. Recipes without one are known from the start; the
-   * others have to be bought (once the kitchen has what they need) before customers can order them
-   * and their ingredients can be ordered.
+   * Restaurant level at which the recipe is learnt (see LEVEL_XP). It goes on the menu, so customers
+   * order it and its ingredients can be ordered, once the kitchen also has the appliances it needs.
    */
-  unlockPriceCents?: number;
+  unlockLevel: number;
 }
 
-/** How each menu item is made. Taking the ingredients counts as the first step (see recipeLevel). */
+/** How each menu item is made. Taking the ingredients counts as the first step (see recipeComplexity). */
 export const RECIPES: Record<MenuItemId, Recipe> = {
-  cola: { ingredients: ["cola"], steps: [] },
+  cola: { ingredients: ["cola"], steps: [], unlockLevel: 1 },
   dhal: {
     ingredients: ["lentils", "coconutMilk"],
     steps: [{ at: "stove", label: "Cuoci il dhal", ms: 8000 }],
+    unlockLevel: 1,
   },
-  painAuChocolat: {
-    ingredients: ["puffPastry", "chocolate"],
-    steps: [{ at: "oven", label: "Cuoci in forno", ms: 8000 }],
-    unlockPriceCents: 1500,
+  frittata: {
+    ingredients: ["eggs"],
+    steps: [{ at: "stove", label: "Cuoci la frittata", ms: 6000 }],
+    unlockLevel: 4,
   },
   fries: {
     ingredients: ["frozenFries"],
     steps: [{ at: "fryer", label: "Friggi", ms: 6000 }],
-    unlockPriceCents: 1500,
+    unlockLevel: 5,
   },
   coffee: {
     ingredients: ["groundCoffee"],
     steps: [{ at: "coffeeMachine", label: "Fai il caffè", ms: 3000 }],
-    unlockPriceCents: 1000,
+    unlockLevel: 3,
   },
   breadNutella: {
     ingredients: ["bread", "nutella"],
     steps: [{ at: "workbench", label: "Taglia e spalma", ms: 3000 }],
-    unlockPriceCents: 1000,
+    unlockLevel: 2,
   },
   airFriedPotatoes: {
     ingredients: ["potatoes"],
@@ -125,7 +125,7 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
       { at: "workbench", label: "Taglia a spicchi", ms: 3000 },
       { at: "airFryer", label: "Cuoci ad aria", ms: 9000 },
     ],
-    unlockPriceCents: 2000,
+    unlockLevel: 6,
   },
   tomatoConfit: {
     ingredients: ["cherryTomatoes"],
@@ -133,7 +133,7 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
       { at: "workbench", label: "Taglia a metà", ms: 3000 },
       { at: "oven", label: "Cuoci a bassa temperatura", ms: 10000 },
     ],
-    unlockPriceCents: 2200,
+    unlockLevel: 6,
   },
   peanutLeeks: {
     ingredients: ["leeks", "peanutButter"],
@@ -141,7 +141,7 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
       { at: "workbench", label: "Affetta i porri", ms: 3000 },
       { at: "stove", label: "Salta in padella", ms: 7000 },
     ],
-    unlockPriceCents: 2500,
+    unlockLevel: 7,
   },
   veggieBalls: {
     ingredients: ["veganMince", "carrots"],
@@ -150,32 +150,32 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
       { at: "blender", label: "Impasta", ms: 4000 },
       { at: "fryer", label: "Friggi le polpette", ms: 7000 },
     ],
-    unlockPriceCents: 3500,
+    unlockLevel: 8,
   },
   tagliatelle: {
-    ingredients: ["freshPasta", "veganMince"],
+    ingredients: ["freshPasta", "veganMince", "cherryTomatoes"],
     steps: [
       { at: "workbench", label: "Prepara il soffritto", ms: 3000 },
       { at: "stove", label: "Cuoci il ragù", ms: 8000 },
       { at: "workbench", label: "Condisci le tagliatelle", ms: 2000 },
       { at: "stove", label: "Manteca in padella", ms: 4000 },
     ],
-    unlockPriceCents: 4500,
+    unlockLevel: 9,
   },
   cheesecake: {
-    ingredients: ["biscuits", "creamCheese"],
+    ingredients: ["biscuits", "creamCheese", "berries"],
     steps: [
       { at: "blender", label: "Trita i biscotti", ms: 3000 },
       { at: "workbench", label: "Componi la torta", ms: 3000 },
       { at: "oven", label: "Cuoci", ms: 10000 },
       { at: "workbench", label: "Taglia una fetta", ms: 2000 },
     ],
-    unlockPriceCents: 5000,
+    unlockLevel: 10,
   },
 };
 
 /** Complexity from 1 to 5: how many steps the recipe takes, taking the ingredients included. */
-export function recipeLevel(dish: MenuItemId) {
+export function recipeComplexity(dish: MenuItemId) {
   return RECIPES[dish].steps.length + 1;
 }
 
@@ -189,6 +189,11 @@ export function recipeEquipment(dish: MenuItemId): EquipmentId[] {
   const needed = new Set<EquipmentId>(RECIPES[dish].steps.map((step) => step.at));
   if (recipeStorages(dish).includes("freezer")) needed.add("freezer");
   return [...needed];
+}
+
+/** Recipes that can't be made without this appliance, in menu order. */
+export function recipesNeeding(kind: EquipmentId): MenuItemId[] {
+  return MENU_ITEMS.filter((id) => recipeEquipment(id).includes(kind));
 }
 
 /** Every step of a recipe as shown to players, starting with taking the ingredients. */
@@ -214,7 +219,7 @@ export function readyMadeDish(ingredient: IngredientId): MenuItemId | null {
  * A player carries one cooked dish, one dish halfway through its recipe, or up to this many
  * ingredients.
  */
-export const MAX_HELD_INGREDIENTS = 2;
+export const MAX_HELD_INGREDIENTS = 3;
 
 /** A dish halfway through its recipe, as carried around: `dish` with its first `stepsDone` steps done. */
 export interface Prep {
@@ -264,9 +269,6 @@ export function ingredientsAfterCooking(dish: MenuItemId, holding: Iterable<stri
   }
   return left;
 }
-
-/** Recipes the restaurant knows from the start. */
-export const STARTING_RECIPES = MENU_ITEMS.filter((id) => RECIPES[id].unlockPriceCents === undefined);
 
 /** What the restaurant opens with: some cash and an empty fridge, so the first thing to do is order ingredients. */
 export const STARTING_MONEY_CENTS = 2000;
