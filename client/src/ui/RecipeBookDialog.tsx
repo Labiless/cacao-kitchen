@@ -1,30 +1,38 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
-  INGREDIENTS,
+  EQUIPMENT,
+  MAX_LEVEL,
   MENU,
   MENU_ITEMS,
-  Message,
-  RECIPES,
   formatMoney,
-  type BuyRecipeMessage,
+  missingEquipment,
+  recipeComplexity,
+  recipesAtLevel,
   type MenuItemId,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { useRoomState } from "./useRoomState.ts";
+import { RecipeSteps } from "./RecipeSteps.tsx";
 
 interface Props {
   room: KitchenRoom;
   onClose: () => void;
 }
 
-/** Every recipe: the ones on the menu, and the ones the waiter can buy to add to it. */
-export function RecipeBookDialog({ room, onClose }: Props) {
-  const money = useRoomState(room, (state) => state.money);
-  const unlocked = useRoomState(room, (state) => [...state.unlockedRecipes].join(",")).split(",");
+const LEVELS = Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).filter((level) => recipesAtLevel(level).length);
 
-  function buy(recipe: MenuItemId) {
-    room.send(Message.BuyRecipe, { recipe } satisfies BuyRecipeMessage);
-  }
+/**
+ * Every recipe, by the restaurant level that puts it on the menu, and what the kitchen still needs
+ * to make the ones already on it.
+ */
+export function RecipeBookDialog({ room, onClose }: Props) {
+  const level = useRoomState(room, (state) => state.level);
+  /** Missing appliances per recipe: recomputed only when the kitchen's appliances change. */
+  const kitchen = useRoomState(room, (state) => [...state.appliances.values()].map((a) => a.kind).sort().join(","));
+  const missing = useMemo(
+    () => Object.fromEntries(MENU_ITEMS.map((id) => [id, missingEquipment(room.state, id)])) as Record<MenuItemId, ReturnType<typeof missingEquipment>>,
+    [room, kitchen],
+  );
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -36,38 +44,50 @@ export function RecipeBookDialog({ room, onClose }: Props) {
 
   return (
     <div className="backdrop">
-      <div className="card dialog phone-dialog" role="dialog" aria-label="Libro delle ricette">
+      <div className="card dialog recipe-book" role="dialog" aria-label="Libro delle ricette">
         <h2>📖 Libro delle ricette</h2>
         <small className="hint">
-          Una ricetta comprata va nel menù: i clienti la ordinano e il cuoco può ordinarne l'ingrediente al telefono.
-          In cassa: {formatMoney(money)}
+          Ogni turno superato è un livello in più, e ogni livello mette nel menù nuove ricette: i clienti le ordinano
+          subito, anche se in cucina manca un elettrodomestico (si compra dal computer). Il ristorante è al livello {level}.
         </small>
-        <ul className="shop-list">
-          {MENU_ITEMS.map((id) => {
-            const { label, emoji, priceCents } = MENU[id];
-            const { ingredients, cookMs, unlockPriceCents } = RECIPES[id];
-            const known = unlocked.includes(id);
-            return (
-              <li key={id}>
-                <span className="menu-emoji">{emoji}</span>
-                <span className="shop-item">
-                  {label}
-                  <small className="recipe">
-                    {ingredients.map((i) => `${INGREDIENTS[i].emoji} ${INGREDIENTS[i].label}`).join(" + ")}
-                    {` · ${cookMs / 1000}s · vendi a ${formatMoney(priceCents)}`}
-                  </small>
-                </span>
-                {known || unlockPriceCents === undefined ? (
-                  <span className="badge">Nel menù</span>
-                ) : (
-                  <button type="button" disabled={money < unlockPriceCents} onClick={() => buy(id)}>
-                    {formatMoney(unlockPriceCents)}
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="recipe-book-pages">
+          {LEVELS.map((unlockLevel) => (
+            <section key={unlockLevel} className={unlockLevel > level ? "locked" : undefined}>
+              <h3>{unlockLevel > level ? "🔒 " : ""}Livello {unlockLevel}</h3>
+              <ul className="shop-list">
+                {recipesAtLevel(unlockLevel).map((id) => {
+                  const { label, emoji, priceCents } = MENU[id];
+                  const steps = recipeComplexity(id);
+                  const needs = missing[id];
+                  return (
+                    <li key={id}>
+                      <span className="menu-emoji">{emoji}</span>
+                      <span className="shop-item">
+                        {label}
+                        <small className="recipe">
+                          {steps === 1 ? "1 passaggio" : `${steps} passaggi`} · vendi a {formatMoney(priceCents)}
+                        </small>
+                        <RecipeSteps dish={id} />
+                        {unlockLevel <= level && needs.length > 0 && (
+                          <small className="recipe missing">
+                            Serve: {needs.map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}
+                          </small>
+                        )}
+                      </span>
+                      {unlockLevel > level ? (
+                        <span className="badge waiting">Livello {unlockLevel}</span>
+                      ) : needs.length ? (
+                        <span className="badge missing-badge">Manca attrezzatura</span>
+                      ) : (
+                        <span className="badge">Nel menù</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
         <div className="dialog-actions">
           <button type="button" className="secondary" onClick={onClose}>Chiudi</button>
         </div>

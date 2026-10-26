@@ -91,10 +91,16 @@ input {
 }
 .game-container { width: 100%; height: 100%; }
 
-.money {
+.hud {
   position: absolute;
   top: 16px;
   left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 320px);
+}
+.money, .shift-clock {
   padding: 10px 14px;
   border-radius: 8px;
   background: var(--card);
@@ -104,10 +110,19 @@ input {
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
 }
 
-.room-code {
+.top-right {
   position: absolute;
   top: 16px;
   right: 16px;
+  display: flex;
+  gap: 8px;
+}
+.hud-button {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+}
+.room-code {
   min-width: 120px;
   background: var(--card);
   color: var(--ink);
@@ -123,9 +138,34 @@ input {
   padding: 16px;
   background: rgb(43 29 20 / 0.6);
 }
-.dialog { width: min(340px, 100%); }
+.dialog {
+  width: min(340px, 100%);
+  /* Long lists (phone, computer, recipe book…) scroll inside the popup instead of running off screen. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .dialog h2 { margin: 0; font-size: 20px; }
-.fridge-dialog, .stove-dialog { width: min(340px, 100%); }
+.storage-dialog { width: min(340px, 100%); }
+.appliance-dialog { width: min(400px, 100%); }
+.recipe-choices { display: flex; flex-direction: column; gap: 8px; }
+.recipe-book, .computer-dialog { width: min(480px, 100%); max-height: calc(100vh - 32px); }
+.recipe-book-pages { display: flex; flex-direction: column; gap: 14px; }
+.recipe-book h3 { margin: 0 0 6px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.recipe-steps {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.recipe-steps li { display: flex; gap: 4px; counter-increment: step; }
+.recipe-steps li::before { content: counter(step) "."; min-width: 14px; }
+.recipe-steps strong { color: var(--ink); font-weight: 600; }
+.step-emoji { width: 18px; text-align: center; }
+.recipe.missing { color: #c0392b; }
 .phone-dialog { width: min(380px, 100%); }
 .shop-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .shop-list li {
@@ -181,6 +221,25 @@ button.danger { background: #c0392b; }
   font-size: 18px;
   font-style: italic;
 }
+.order-wish {
+  font-size: 56px;
+  font-style: normal;
+  line-height: 1;
+  text-align: center;
+}
+.order-choices {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+.order-choice {
+  justify-content: center;
+  padding: 14px 0;
+  font-size: 40px;
+  line-height: 1;
+}
+.order-choice:hover { border-color: var(--accent); }
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -225,3 +284,50 @@ button.danger { background: #c0392b; }
   color: var(--muted);
 }
 .ticket-item { margin: 12px 0 0; font-size: 18px; }
+
+.shift-clock.ending { background: #fde6d4; color: #a3471c; }
+
+.shift-dialog { width: min(400px, 100%); }
+.report { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+.report th { text-align: left; font-weight: 400; padding: 3px 0; }
+.report td { text-align: right; padding: 3px 0; white-space: nowrap; }
+.report-section th { padding-top: 10px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.report-total th, .report-total td { font-weight: 700; border-top: 1px solid var(--line); padding-top: 8px; }
+.positive { color: #2e7d4f; }
+.negative { color: #c0392b; }
+.ready-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ready-list li { display: flex; align-items: center; gap: 6px; }
+.ready-list .badge { margin-left: auto; min-width: 0; }
+.badge.waiting { background: var(--line); color: var(--muted); }
+.shift-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #d99a00 12%, white);
+}
+.shift-score .stars { font-size: 24px; color: #d99a00; letter-spacing: 1px; }
+
+
+.locked { opacity: 0.6; }
+.level-up {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #2e7d4f 12%, white);
+  font-size: 14px;
+}
+.badge.missing-badge { background: color-mix(in srgb, #c0392b 12%, white); color: #c0392b; }
+.upgrade {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #d99a00 12%, white);
+  font-size: 14px;
+}
+.upgrade > span { flex: 1; }

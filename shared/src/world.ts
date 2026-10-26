@@ -3,8 +3,10 @@
 
 export const WORLD = { width: 800, height: 600 } as const;
 export const PLAYER_SIZE = 40;
-/** Pixels per second. */
-export const PLAYER_SPEED = 220;
+/** Pixels per second: the cook's speed (see ROLE_INFO). */
+export const PLAYER_SPEED = 300;
+/** Pixels per second: the waiter has more ground to cover. */
+export const WAITER_SPEED = 340;
 
 /** Vertical wall splitting the map: a compact kitchen on the left, the bigger dining hall on the right. */
 export const WALL = { x: 300, thickness: 20 } as const;

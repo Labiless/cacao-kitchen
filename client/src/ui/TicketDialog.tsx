@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { MENU, Message, tableLabel, type DiscardTicketMessage } from "@cacao/shared";
+import { EQUIPMENT, MENU, Message, missingEquipment, tableLabel, type DiscardTicketMessage } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
+import { RecipeSteps } from "./RecipeSteps.tsx";
+import { sounds } from "../game/Sounds.ts";
 
 interface Props {
   room: KitchenRoom;
@@ -24,6 +26,7 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
   }, [room, ticketId, onClose]);
 
   function discard() {
+    sounds.play("crumple", -0.4);
     room.send(Message.DiscardTicket, { ticketId } satisfies DiscardTicketMessage);
   }
 
@@ -36,6 +39,7 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
   }, [onClose]);
 
   if (!ticket) return null;
+  const missing = missingEquipment(room.state, ticket.item);
 
   return (
     <div className="backdrop">
@@ -48,6 +52,13 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
           <p className="ticket-item">
             1 × {MENU[ticket.item].emoji} {MENU[ticket.item].label}
           </p>
+          <RecipeSteps dish={ticket.item} />
+          {missing.length > 0 && (
+            <p className="error">
+              In cucina manca:{" "}
+              {missing.map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}
+            </p>
+          )}
         </div>
 
         <div className="dialog-actions">

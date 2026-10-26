@@ -3,13 +3,15 @@ import {
   DELIVERY,
   INGREDIENTS,
   Message,
+  STORAGE_INFO,
   formatMoney,
   unlockedIngredients,
   type IngredientId,
   type OrderSuppliesMessage,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
-import { useRoomState } from "./useRoomState.ts";
+import { useRoomState, useRoomValue } from "./useRoomState.ts";
+import { sounds } from "../game/Sounds.ts";
 
 interface Props {
   room: KitchenRoom;
@@ -25,8 +27,7 @@ const DELIVERY_STATUS_TEXT = {
 export function PhoneDialog({ room, onClose }: Props) {
   const money = useRoomState(room, (state) => state.money);
   const delivery = useRoomState(room, (state) => state.delivery.status);
-  const stock = useRoomState(room, (state) => JSON.stringify(state.fridge.toJSON()));
-  const fridge = JSON.parse(stock) as Record<string, number>;
+  const stock = useRoomValue(room, (state) => state.stock.toJSON() as Record<string, number>);
   // Only what the menu needs: new ingredients show up once their recipe is bought.
   const ingredients = useRoomState(room, (state) => unlockedIngredients(state).join(","))
     .split(",")
@@ -46,6 +47,7 @@ export function PhoneDialog({ room, onClose }: Props) {
 
   function order() {
     if (!canOrder) return;
+    sounds.play("phone", -0.6);
     room.send(Message.OrderSupplies, { packs } satisfies OrderSuppliesMessage);
     setPacks({});
   }
@@ -80,7 +82,9 @@ export function PhoneDialog({ room, onClose }: Props) {
                 <span className="menu-emoji">{emoji}</span>
                 <span className="shop-item">
                   {pack.units} × {label} · {formatMoney(pack.priceCents)}
-                  <small className="recipe">In frigo: {fridge[id] ?? 0}</small>
+                  <small className="recipe">
+                    In {STORAGE_INFO[INGREDIENTS[id].storage].label.toLowerCase()}: {stock[id] ?? 0}
+                  </small>
                 </span>
                 <span className="stepper">
                   <button type="button" className="secondary" disabled={count === 0} onClick={() => change(id, -1)}>−</button>

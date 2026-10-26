@@ -22,3 +22,4 @@ npm run build      # build di produzione del client
 Per giocare in due: un giocatore clicca **Crea stanza** e condivide il codice, l'altro lo
 inserisce e clicca **Entra**. Dalla stessa rete locale si può aprire l'indirizzo "Network"
 stampato da Vite.
+

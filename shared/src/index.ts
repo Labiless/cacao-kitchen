@@ -3,9 +3,10 @@
 // in ./hall.ts, the kitchen layout in ./kitchen.ts, what a player can do (timed actions, E interactions)
 // in ./actions.ts, the menu in ./menu.ts.
 
-import { PLAYER_SIZE, WALL, WORLD } from "./world.ts";
+import { PLAYER_SIZE, PLAYER_SPEED, WAITER_SPEED, WALL, WORLD } from "./world.ts";
 import type { IngredientId, MenuItemId } from "./menu.ts";
 import type { EquipmentId } from "./kitchen.ts";
+import type { DecorationId } from "./hall.ts";
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
@@ -14,9 +15,10 @@ export const SERVER_PORT = 2567;
 export const ROLES = ["kitchen", "hall"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const ROLE_INFO: Record<Role, { label: string; area: string; color: string }> = {
-  kitchen: { label: "Cuoco", area: "Cucina", color: "#e8833a" },
-  hall: { label: "Cameriere", area: "Sala", color: "#3aa7a3" },
+export const ROLE_INFO: Record<Role, { label: string; area: string; color: string; speed: number }> = {
+  kitchen: { label: "Cuoco", area: "Cucina", color: "#e8833a", speed: PLAYER_SPEED },
+  // The hall is bigger, so the waiter moves faster.
+  hall: { label: "Cameriere", area: "Sala", color: "#3aa7a3", speed: WAITER_SPEED },
 };
 
 export function isRole(value: unknown): value is Role {
@@ -44,20 +46,26 @@ export const Message = {
   CancelOrder: "cancelOrder",
   /** Payload: DiscardTicketMessage. The cook throws a ticket away. */
   DiscardTicket: "discardTicket",
-  /** Payload: TakeIngredientMessage. Sent from the fridge popup. */
+  /** Payload: TakeIngredientMessage. Sent from the fridge or freezer popup. */
   TakeIngredient: "takeIngredient",
-  /** Payload: TakeIngredientMessage. Puts one carried ingredient back, from the fridge popup. */
+  /** Payload: TakeIngredientMessage. Puts one carried ingredient back, from the fridge or freezer popup. */
   PutBackIngredient: "putBackIngredient",
-  /** Payload: CookMessage. Sent from the stove popup. */
-  Cook: "cook",
+  /** Payload: StartRecipeMessage. Sent from an appliance popup: the first step of a recipe. */
+  StartRecipe: "startRecipe",
+  /** Payload: UpgradeApplianceMessage. Sent from an appliance popup: the cook takes it up a level. */
+  UpgradeAppliance: "upgradeAppliance",
   /** Payload: BuyEquipmentMessage. Sent when the waiter places what they bought on the computer. */
   BuyEquipment: "buyEquipment",
-  /** Payload: BuyRecipeMessage. Sent from the recipe book. */
-  BuyRecipe: "buyRecipe",
+  /** Payload: BuyDecorationMessage. Sent when the waiter places a decoration they bought on the computer. */
+  BuyDecoration: "buyDecoration",
   /** Server → clients. Payload: DishSpoiledMessage. A dish went bad and was thrown away. */
   DishSpoiled: "dishSpoiled",
   /** Payload: OrderSuppliesMessage. Sent from the phone popup; one order at a time. */
   OrderSupplies: "orderSupplies",
+  /** No payload. Between shifts: this player is ready for the next one. */
+  Ready: "ready",
+  /** No payload. Starts the whole game over, from the first shift. */
+  Restart: "restart",
 } as const;
 
 export interface OrderSuppliesMessage {
@@ -65,20 +73,26 @@ export interface OrderSuppliesMessage {
   packs: Partial<Record<IngredientId, number>>;
 }
 
-export interface CookMessage {
-  stoveId: string;
+export interface StartRecipeMessage {
+  applianceId: string;
   dish: MenuItemId;
 }
 
-export interface BuyRecipeMessage {
-  recipe: MenuItemId;
+export interface UpgradeApplianceMessage {
+  applianceId: string;
+}
+
+export interface BuyDecorationMessage {
+  item: DecorationId;
+  /** Index into DECORATION_SLOTS. */
+  slot: number;
 }
 
 export interface DishSpoiledMessage {
   /** Where it was thrown away. */
   x: number;
   y: number;
-  /** Who gets to see it: the kitchen for the stove and the cook's hands, everyone for the pass. */
+  /** Who gets to see it: the kitchen for appliances and the cook's hands, everyone for the pass. */
   seenBy: Role | "everyone";
 }
 
@@ -127,3 +141,6 @@ export * from "./hall.ts";
 export * from "./kitchen.ts";
 export * from "./actions.ts";
 export * from "./menu.ts";
+export * from "./shift.ts";
+export * from "./reviews.ts";
+export * from "./progress.ts";
