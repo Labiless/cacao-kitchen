@@ -29,6 +29,7 @@ import { OrderDialog } from "./OrderDialog.tsx";
 import { TicketDialog } from "./TicketDialog.tsx";
 import { sounds } from "../game/Sounds.ts";
 import { ShiftDialog } from "./ShiftDialog.tsx";
+import { useDialogKeyboard } from "./useDialogKeyboard.ts";
 
 interface Props {
   room: KitchenRoom;
@@ -41,6 +42,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<ReturnType<typeof createGame> | null>(null);
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
+  useDialogKeyboard();
   const money = useRoomState(room, (state) => state.money);
   const day = useRoomState(room, (state) => state.shift.day);
   const phase = useRoomState(room, (state) => state.shift.phase);
