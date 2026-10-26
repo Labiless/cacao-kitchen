@@ -1,4 +1,4 @@
-import { Message, ROLE_INFO, SHIFT, formatMoney, type ShiftReport } from "@cacao/shared";
+import { MAX_STARS, Message, ROLE_INFO, SHIFT, formatMoney, formatStars, starIcons, type ShiftReport } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { useRoomState } from "./useRoomState.ts";
 
@@ -13,6 +13,8 @@ interface Props {
 export function ShiftDialog({ room }: Props) {
   const day = useRoomState(room, (state) => state.shift.day);
   const money = useRoomState(room, (state) => state.money);
+  const stars = useRoomState(room, (state) => state.stars);
+  const ratedShifts = useRoomState(room, (state) => state.ratedShifts);
   const report = JSON.parse(useRoomState(room, (state) => JSON.stringify(state.shift.report.toJSON()))) as ShiftReport;
   const players = JSON.parse(useRoomState(room, (state) => JSON.stringify(
     [...state.players.entries()].map(([id, p]) => ({ id, name: p.name, role: p.role, ready: p.ready })),
@@ -31,7 +33,8 @@ export function ShiftDialog({ room }: Props) {
             <p className="hint">
               Ogni turno dura {SHIFT.durationS / 60} minuti. Soldi, elettrodomestici e ricette restano da un giorno
               all'altro, la merce no: gli ingredienti vanno ordinati ogni giorno. Alla fine del turno si pagano
-              personale e bollette.
+              personale e bollette. Ogni cliente che si siede lascia una recensione da 1 a 5 stelle, in base a quanto
+              ha aspettato e a quanto è pulita la sala: la media dei turni fa le stelle del ristorante.
             </p>
           </>
         ) : (
@@ -57,6 +60,26 @@ export function ShiftDialog({ room }: Props) {
                 </tr>
               </tbody>
             </table>
+            <div className="shift-score">
+              {report.ratingCount ? (
+                <>
+                  <span className="stars">{starIcons(report.ratingSum / report.ratingCount)}</span>
+                  <span>
+                    Voto del turno <strong>{formatStars(report.ratingSum / report.ratingCount)}</strong>/{MAX_STARS}
+                    <small className="recipe">
+                      {report.ratingCount} {report.ratingCount === 1 ? "recensione" : "recensioni"}
+                    </small>
+                  </span>
+                </>
+              ) : (
+                <span className="hint">Nessuna recensione in questo turno.</span>
+              )}
+            </div>
+            {ratedShifts > 0 && (
+              <p className="hint">
+                ⭐ Il ristorante ha {formatStars(stars)} stelle, media di {ratedShifts} {ratedShifts === 1 ? "turno" : "turni"}.
+              </p>
+            )}
             <p className="hint">
               😊 {report.paid} {report.paid === 1 ? "cliente ha pagato" : "clienti hanno pagato"} · 😠 {report.lost}{" "}
               {report.lost === 1 ? "è andato via scontento" : "sono andati via scontenti"}

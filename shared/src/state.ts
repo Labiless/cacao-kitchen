@@ -1,6 +1,6 @@
 import { schema, t, type SchemaType } from "@colyseus/schema";
 import type { Role } from "./index.ts";
-import type { CustomerStatus, TableStatus } from "./hall.ts";
+import type { CustomerStatus, DecorationId, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
 import type { MenuItemId } from "./menu.ts";
 import type { ApplianceStatus, DeliveryStatus, EquipmentId } from "./kitchen.ts";
@@ -53,6 +53,8 @@ export const Customer = schema({
   bill: t.number().default(0),
   /** Tip they'll leave on top of the bill, in cents; set when served. See tipFor. */
   tip: t.number().default(0),
+  /** Stars from their review, set as they leave; 0 = no review (they never got a table). See reviewStars. */
+  rating: t.uint8().default(0),
 }, "Customer");
 export type Customer = SchemaType<typeof Customer>;
 
@@ -96,6 +98,15 @@ export const PassDish = schema({
 }, "PassDish");
 export type PassDish = SchemaType<typeof PassDish>;
 
+/** A decoration in the dining hall. */
+export const Decoration = schema({
+  id: t.string(),
+  kind: t.string<DecorationId>(),
+  /** Index into DECORATION_SLOTS. */
+  slot: t.uint8(),
+}, "Decoration");
+export type Decoration = SchemaType<typeof Decoration>;
+
 /** The one supplier order that can be in progress at a time. */
 export const Delivery = schema({
   status: t.string<DeliveryStatus>().default("none"),
@@ -110,7 +121,7 @@ export const ShiftReport = schema({
   tipsCents: t.number().default(0),
   /** Ingredient orders on the phone. */
   ingredientsCents: t.number().default(0),
-  /** Appliances and recipes. */
+  /** Appliances, decorations and recipes. */
   improvementsCents: t.number().default(0),
   /** Wages and bills: charged when the shift ends. */
   staffCents: t.number().default(0),
@@ -118,6 +129,9 @@ export const ShiftReport = schema({
   /** Customers who paid, and customers who left unhappy without paying. */
   paid: t.number().default(0),
   lost: t.number().default(0),
+  /** Sum and number of the reviews left during the shift: the shift's score is their average. */
+  ratingSum: t.number().default(0),
+  ratingCount: t.number().default(0),
 }, "ShiftReport");
 export type ShiftReport = SchemaType<typeof ShiftReport>;
 
@@ -139,6 +153,8 @@ export const KitchenState = schema({
   tickets: t.map(Ticket),
   /** Everything placed on the kitchen grid, by id. The fridge is fixed and isn't one of them. */
   appliances: t.map(Appliance),
+  /** Decorations in the hall, by id. Like appliances, they stay from one shift to the next. */
+  decorations: t.map(Decoration),
   /** Dishes waiting on the pass, oldest first. */
   pass: t.array(PassDish),
   /** Ids of the customers queuing at the till, front of the queue first. */
@@ -151,5 +167,9 @@ export const KitchenState = schema({
   /** Menu items whose recipe the restaurant knows: the menu. Customers order from these, stock or no stock. */
   unlockedRecipes: t.array("string"),
   shift: Shift,
+  /** The restaurant's stars: the average score of every shift that got reviews; 0 before the first. */
+  stars: t.number().default(0),
+  /** How many shifts `stars` averages over. */
+  ratedShifts: t.number().default(0),
 }, "KitchenState");
 export type KitchenState = SchemaType<typeof KitchenState>;

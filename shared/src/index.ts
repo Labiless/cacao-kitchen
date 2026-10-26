@@ -6,6 +6,7 @@
 import { PLAYER_SIZE, WALL, WORLD } from "./world.ts";
 import type { IngredientId, MenuItemId } from "./menu.ts";
 import type { EquipmentId } from "./kitchen.ts";
+import type { DecorationId } from "./hall.ts";
 
 export const ROOM_NAME = "kitchen";
 export const MAX_PLAYERS = 2;
@@ -52,6 +53,8 @@ export const Message = {
   StartRecipe: "startRecipe",
   /** Payload: BuyEquipmentMessage. Sent when the waiter places what they bought on the computer. */
   BuyEquipment: "buyEquipment",
+  /** Payload: BuyDecorationMessage. Sent when the waiter places a decoration they bought on the computer. */
+  BuyDecoration: "buyDecoration",
   /** Payload: BuyRecipeMessage. Sent from the recipe book. */
   BuyRecipe: "buyRecipe",
   /** Server → clients. Payload: DishSpoiledMessage. A dish went bad and was thrown away. */
@@ -70,6 +73,12 @@ export interface OrderSuppliesMessage {
 export interface StartRecipeMessage {
   applianceId: string;
   dish: MenuItemId;
+}
+
+export interface BuyDecorationMessage {
+  item: DecorationId;
+  /** Index into DECORATION_SLOTS. */
+  slot: number;
 }
 
 export interface BuyRecipeMessage {
@@ -130,3 +139,4 @@ export * from "./kitchen.ts";
 export * from "./actions.ts";
 export * from "./menu.ts";
 export * from "./shift.ts";
+export * from "./reviews.ts";

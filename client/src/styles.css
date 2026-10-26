@@ -284,3 +284,12 @@ button.danger { background: #c0392b; }
 .ready-list li { display: flex; align-items: center; gap: 6px; }
 .ready-list .badge { margin-left: auto; min-width: 0; }
 .badge.waiting { background: var(--line); color: var(--muted); }
+.shift-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #d99a00 12%, white);
+}
+.shift-score .stars { font-size: 24px; color: #d99a00; letter-spacing: 1px; }

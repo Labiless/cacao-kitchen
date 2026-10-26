@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { attendedCustomer, formatClock, formatMoney, type EquipmentId, type MenuItemId } from "@cacao/shared";
+import { attendedCustomer, formatClock, formatMoney, formatStars, type EquipmentId, type MenuItemId } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
 import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, START_PLACEMENT_EVENT, createGame, type ScenePopup } from "../game/createGame.ts";
@@ -29,6 +29,8 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const day = useRoomState(room, (state) => state.shift.day);
   const phase = useRoomState(room, (state) => state.shift.phase);
   const secondsLeft = useRoomState(room, (state) => state.shift.secondsLeft);
+  const stars = useRoomState(room, (state) => state.stars);
+  const ratedShifts = useRoomState(room, (state) => state.ratedShifts);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
   /** Popup opened from the scene (a ticket, the fridge or freezer, an appliance, the phone, the computer, the recipe book), if any. */
   const [popup, setPopup] = useState<ScenePopup | null>(null);
@@ -101,6 +103,11 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
       <div className="hud">
         <div className="money" title="Cassa del ristorante">💰 {formatMoney(money)}</div>
+        {ratedShifts > 0 && (
+          <div className="money" title={`Media dei voti di ${ratedShifts} ${ratedShifts === 1 ? "turno" : "turni"}`}>
+            ⭐ {formatStars(stars)}
+          </div>
+        )}
         {phase === "open" && (
           <div className={secondsLeft <= 30 ? "shift-clock ending" : "shift-clock"} title="Tempo alla chiusura">
             Turno {day} · ⏱ {formatClock(secondsLeft)}

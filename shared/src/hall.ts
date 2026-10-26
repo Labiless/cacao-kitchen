@@ -10,6 +10,7 @@ import {
   overlapsBox,
   type Point,
 } from "./world.ts";
+import type { KitchenState } from "./state.ts";
 
 export const TABLE_SIZE = 60;
 
@@ -73,7 +74,7 @@ export const CUSTOMER_TIMING = {
    * Seconds of patience in each status where the customer is waiting on the waiter.
    * Patience refills on entering each of these and is paused in every other status.
    */
-  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60, queuing: 30 } as Partial<Record<CustomerStatus, number>>,
+  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60, queuing: 60 } as Partial<Record<CustomerStatus, number>>,
   /** Seconds a seated customer spends reading the menu before they're ready to order. */
   readingMenuS: 4,
   /** Seconds a customer spends eating before they get up and go pay. */
@@ -159,4 +160,63 @@ export function isAtQueueSpot(customer: Point, index: number) {
 /** Where a customer sits at a table: on its top edge. */
 export function seatPosition(table: Point) {
   return { x: table.x, y: table.y - TABLE_SIZE / 2 };
+}
+
+/** Things the waiter can buy on the computer to make the dining hall nicer. They stay from one shift to the next. */
+export const DECORATIONS = {
+  candles: { label: "Candele", emoji: "🕯️", description: "Un po' di atmosfera.", priceCents: 600, beauty: 1 },
+  flowers: { label: "Vaso di fiori", emoji: "💐", description: "Freschi e colorati.", priceCents: 800, beauty: 1 },
+  plant: { label: "Pianta", emoji: "🪴", description: "Un angolo verde.", priceCents: 1200, beauty: 2 },
+  painting: { label: "Quadro", emoji: "🖼️", description: "Un po' d'arte alle pareti.", priceCents: 2000, beauty: 3 },
+  aquarium: { label: "Acquario", emoji: "🐠", description: "Rilassa chi aspetta.", priceCents: 4000, beauty: 5 },
+  fountain: { label: "Fontana", emoji: "⛲", description: "Il rumore dell'acqua.", priceCents: 6000, beauty: 7 },
+  piano: { label: "Pianoforte", emoji: "🎹", description: "Il tocco di classe.", priceCents: 8000, beauty: 9 },
+} as const;
+export type DecorationId = keyof typeof DECORATIONS;
+export const DECORATION_IDS = Object.keys(DECORATIONS) as DecorationId[];
+
+export function isDecoration(value: unknown): value is DecorationId {
+  return DECORATION_IDS.includes(value as DecorationId);
+}
+
+/** Beauty points at which decorations count in full towards how nice the hall is (see hallBeauty). */
+export const FULL_DECOR_BEAUTY = 20;
+
+export const DECORATION_SIZE = 32;
+
+/**
+ * Spots in the hall where a decoration can go, one each: along the walls and in the middle of the
+ * tables, clear of the tables, the lines, the till, the computer, the recipe book and the pass.
+ */
+export const DECORATION_SLOTS: readonly Point[] = [
+  { x: 380, y: 24 },
+  { x: 660, y: 24 },
+  { x: WALL.x + WALL.thickness / 2 + 20, y: 70 },
+  { x: WALL.x + WALL.thickness / 2 + 20, y: 150 },
+  { x: WALL.x + WALL.thickness / 2 + 20, y: 565 },
+  { x: 540, y: 255 },
+  { x: WORLD.width - 22, y: 300 },
+  { x: WORLD.width - 22, y: 420 },
+  { x: 420, y: 570 },
+];
+
+/** Whether a player centered at `p` would overlap a decoration in one of these slots. */
+export function overlapsDecorations(p: Point, slots: Iterable<number>) {
+  for (const slot of slots) {
+    const { x, y } = DECORATION_SLOTS[slot];
+    if (overlapsBox(p, { x, y, width: DECORATION_SIZE, height: DECORATION_SIZE })) return true;
+  }
+  return false;
+}
+
+/** Whether a decoration can go in this slot: nothing there yet, and nobody standing on it (or they'd get stuck). */
+export function canPlaceDecoration(state: KitchenState, slot: number) {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= DECORATION_SLOTS.length) return false;
+  for (const decoration of state.decorations.values()) {
+    if (decoration.slot === slot) return false;
+  }
+  for (const player of state.players.values()) {
+    if (overlapsDecorations(player, [slot])) return false;
+  }
+  return true;
 }

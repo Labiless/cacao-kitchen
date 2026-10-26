@@ -37,6 +37,7 @@ import {
   heldItemInfo,
   isMenuItem,
   interactionLabel,
+  starIcons,
   type Customer,
   type CustomerStatus,
   type InputState,
@@ -246,7 +247,7 @@ export class KitchenScene extends Phaser.Scene {
         }));
         unsubscribe.push(callbacks.listen(customer, "status", (status) => {
           this.refreshCustomerIcon(id, customer);
-          if (status === "leaving") this.showCustomerLeaving(id, customer.patience > 0);
+          if (status === "leaving") this.showCustomerLeaving(id, customer);
         }));
       }),
       callbacks.onRemove("customers", (_customer, id) => this.removeCustomer(id)),
@@ -672,18 +673,31 @@ export class KitchenScene extends Phaser.Scene {
     this.customers.get(id)?.icon.setText(this.sees("hall") ? icons[customer.status] ?? "" : "");
   }
 
-  /** Fades the customer out, with a face showing how it went for the waiter. */
-  private showCustomerLeaving(id: string, happy: boolean) {
+  /**
+   * Fades the customer out, showing the waiter how it went: their review in stars, or an angry face if
+   * they left before even getting a table.
+   */
+  private showCustomerLeaving(id: string, customer: Customer) {
     const sprite = this.customers.get(id);
     if (!sprite) return;
     this.tweens.add({ targets: [sprite.body, sprite.icon], alpha: 0, duration: 1000 });
     if (!this.sees("hall")) return;
 
-    const face = this.add
-      .text(sprite.body.x, sprite.body.y - CUSTOMER_SIZE / 2, happy ? "😊" : "😠", { fontSize: "24px" })
-      .setOrigin(0.5, 1)
-      .setDepth(Depth.Label);
-    this.tweens.add({ targets: face, y: face.y - 30, alpha: 0, duration: 1200, onComplete: () => face.destroy() });
+    const { x, y } = sprite.body;
+    const text = customer.rating
+      ? this.add.text(x, y - CUSTOMER_SIZE / 2, starIcons(customer.rating), {
+        ...TEXT_STYLE,
+        fontSize: "16px",
+        fontStyle: "bold",
+        color: "#d99a00",
+        stroke: "#fffaf3",
+        strokeThickness: 3,
+      })
+      : this.add.text(x, y - CUSTOMER_SIZE / 2, customer.patience > 0 ? "😊" : "😠", { fontSize: "24px" });
+    text.setOrigin(0.5, 1).setDepth(Depth.Label);
+    // Reviews stay up a little longer, so there's time to read them.
+    const duration = customer.rating ? 2000 : 1200;
+    this.tweens.add({ targets: text, y: text.y - 30, alpha: 0, duration, onComplete: () => text.destroy() });
   }
 
   private removeCustomer(id: string) {

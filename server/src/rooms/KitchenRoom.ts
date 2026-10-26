@@ -37,6 +37,16 @@ import {
   SHIFT,
   ShiftReport,
   tipFor,
+  REVIEWED_WAITS,
+  hallBeauty,
+  reviewStars,
+  DECORATIONS,
+  Decoration,
+  canPlaceDecoration,
+  isDecoration,
+  overlapsDecorations,
+  type BuyDecorationMessage,
+  type ReviewedWait,
   STARTING_RECIPES,
   MAX_HELD_INGREDIENTS,
   heldDish,
@@ -95,6 +105,15 @@ import {
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
 
+/** What a seated customer will base their review on, from the moment they sit down. */
+interface Visit {
+  /** Patience left at the end of each reviewed wait. */
+  waits: Partial<Record<ReviewedWait, number>>;
+  /** Seconds in the restaurant, and the same weighted by hallBeauty: their ratio is the average beauty. */
+  seconds: number;
+  beautySeconds: number;
+}
+
 /** Delay before the first customer of a shift, so the cook has a moment to order ingredients. */
 const FIRST_CUSTOMER_DELAY_MS = 3000;
 
@@ -115,6 +134,8 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private actionEndsAt = new Map<string, number>();
   /** When each customer in a TIMED_STATUSES status moves on to the next one. */
   private statusEndsAt = new Map<string, number>();
+  /** Seated customers' experience so far, by customer id; those never seated don't review. */
+  private visits = new Map<string, Visit>();
   private nextCustomerAt = 0;
   /** When the current shift stops letting customers in. */
   private closesAt = 0;
@@ -123,6 +144,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   /** When the step in progress on each appliance is done, by appliance id. */
   private applianceReadyAt = new Map<string, number>();
   private applianceCount = 0;
+  private decorationCount = 0;
   private customerCount = 0;
   private ticketCount = 0;
 
@@ -284,6 +306,21 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.state.unlockedRecipes.push(recipe);
     });
 
+    this.onShiftMessage(Message.BuyDecoration, (client, message: BuyDecorationMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (player?.role !== "hall" || !isNearComputer(player) || !isDecoration(message?.item)) return;
+      const { priceCents } = DECORATIONS[message.item];
+      if (this.state.money < priceCents || !canPlaceDecoration(this.state, message.slot)) return;
+
+      this.state.money -= priceCents;
+      this.state.shift.report.improvementsCents += priceCents;
+      const decoration = new Decoration();
+      decoration.id = `d${++this.decorationCount}`;
+      decoration.kind = message.item;
+      decoration.slot = message.slot;
+      this.state.decorations.set(decoration.id, decoration);
+    });
+
     this.onShiftMessage(Message.BuyEquipment, (client, message: BuyEquipmentMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (player?.role !== "hall" || !isNearComputer(player) || !isEquipment(message?.item)) return;
@@ -368,6 +405,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.state.queue.clear();
     this.state.customers.clear();
     this.statusEndsAt.clear();
+    this.visits.clear();
     for (const table of this.state.tables.values()) table.status = "free";
     for (const appliance of this.state.appliances.values()) {
       appliance.status = "idle";
@@ -393,6 +431,13 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     // The fridge isn't in the appliances map but uses electricity too.
     report.billsCents = (this.state.appliances.size + 1) * SHIFT.billPerApplianceCents;
     this.state.money -= report.staffCents + report.billsCents;
+
+    // The shift's score joins the restaurant's average; a shift without reviews doesn't count.
+    if (report.ratingCount) {
+      const score = report.ratingSum / report.ratingCount;
+      this.state.stars = (this.state.stars * this.state.ratedShifts + score) / (this.state.ratedShifts + 1);
+      this.state.ratedShifts++;
+    }
     shift.phase = "break";
     shift.secondsLeft = 0;
   }
@@ -469,6 +514,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         customer.x = seat.x;
         customer.y = seat.y;
         table.status = "occupied";
+        this.visits.set(customer.id, { waits: {}, seconds: 0, beautySeconds: 0 });
         this.setCustomerStatus(customer, "readingMenu");
         break;
       }
@@ -676,6 +722,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   private hitsObstacle(x: number, y: number) {
     if (overlapsKitchenFurniture({ x, y }, this.state.appliances.values()) || overlapsHallFurniture({ x, y })) return true;
+    if (overlapsDecorations({ x, y }, [...this.state.decorations.values()].map((d) => d.slot))) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }
@@ -694,6 +741,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     }
 
     const line = entranceLine(this.state);
+    const beauty = hallBeauty(this.state);
+    for (const visit of this.visits.values()) {
+      visit.seconds += dt;
+      visit.beautySeconds += dt * beauty;
+    }
 
     this.state.customers.forEach((customer) => {
       const patienceS = CUSTOMER_TIMING.patienceS[customer.status];
@@ -753,12 +805,23 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   /** Changes status, refilling patience if it drains in the new status and starting its timer if it has one. */
   private setCustomerStatus(customer: Customer, status: CustomerStatus) {
+    this.recordWait(customer);
     customer.status = status;
     if (CUSTOMER_TIMING.patienceS[status]) customer.patience = 1;
 
     const timed = TIMED_STATUSES[status];
     if (timed) this.statusEndsAt.set(customer.id, this.clock.currentTime + timed.seconds * 1000);
     else this.statusEndsAt.delete(customer.id);
+  }
+
+  /**
+   * About to leave a status: if it's a wait that counts for the review, note how much patience is left.
+   * A wait left and entered again (an order dialog closed without ordering) keeps the latest value.
+   */
+  private recordWait(customer: Customer) {
+    const visit = this.visits.get(customer.id);
+    const status = customer.status as ReviewedWait;
+    if (visit && REVIEWED_WAITS.includes(status)) visit.waits[status] = customer.patience;
   }
 
   /** Back to waiting for the waiter, keeping the patience they had left. */
@@ -817,8 +880,22 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   /** Marks the customer as leaving, then removes them. Their ticket stays. */
   private sendAway(customer: Customer) {
+    const { report } = this.state.shift;
     // Patience 0: they left unhappy, without paying.
-    if (customer.patience === 0) this.state.shift.report.lost++;
+    const angry = customer.patience === 0;
+    if (angry) report.lost++;
+
+    // Their review, if they got as far as a table. Set before the status, so it's there when clients see them leave.
+    this.recordWait(customer);
+    const visit = this.visits.get(customer.id);
+    if (visit) {
+      const beauty = visit.seconds > 0 ? visit.beautySeconds / visit.seconds : hallBeauty(this.state);
+      customer.rating = reviewStars(visit.waits, beauty, angry);
+      report.ratingSum += customer.rating;
+      report.ratingCount++;
+      this.visits.delete(customer.id);
+    }
+
     customer.status = "leaving";
     customer.waiterId = "";
     this.statusEndsAt.delete(customer.id);
