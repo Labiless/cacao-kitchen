@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MENU, Message, tableLabel, type DiscardTicketMessage } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
+import { RecipeSteps } from "./RecipeSteps.tsx";
 
 interface Props {
   room: KitchenRoom;
@@ -48,6 +49,7 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
           <p className="ticket-item">
             1 × {MENU[ticket.item].emoji} {MENU[ticket.item].label}
           </p>
+          <RecipeSteps dish={ticket.item} />
         </div>
 
         <div className="dialog-actions">

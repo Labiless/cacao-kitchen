@@ -125,7 +125,26 @@ input {
 }
 .dialog { width: min(340px, 100%); }
 .dialog h2 { margin: 0; font-size: 20px; }
-.fridge-dialog, .stove-dialog { width: min(340px, 100%); }
+.storage-dialog { width: min(340px, 100%); }
+.appliance-dialog { width: min(400px, 100%); }
+.recipe-choices { display: flex; flex-direction: column; gap: 8px; }
+.recipe-book { width: min(480px, 100%); max-height: calc(100vh - 32px); }
+.recipe-book-pages { overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.recipe-book h3 { margin: 0 0 6px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.recipe-steps {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.recipe-steps li { display: flex; gap: 4px; counter-increment: step; }
+.recipe-steps li::before { content: counter(step) "."; min-width: 14px; }
+.recipe-steps strong { color: var(--ink); font-weight: 600; }
+.step-emoji { width: 18px; text-align: center; }
+.recipe.missing { color: #c0392b; }
 .phone-dialog { width: min(380px, 100%); }
 .shop-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .shop-list li {

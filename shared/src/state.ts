@@ -3,7 +3,7 @@ import type { Role } from "./index.ts";
 import type { CustomerStatus, TableStatus } from "./hall.ts";
 import type { ActionId } from "./actions.ts";
 import type { MenuItemId } from "./menu.ts";
-import type { DeliveryStatus, StoveStatus } from "./kitchen.ts";
+import type { ApplianceStatus, DeliveryStatus, EquipmentId } from "./kitchen.ts";
 
 export const Player = schema({
   name: t.string(),
@@ -15,7 +15,10 @@ export const Player = schema({
   action: t.string<ActionId | "">().default(""),
   /** Id of the table the action is performed on. */
   actionTarget: t.string().default(""),
-  /** What the player carries (HeldItem ids): one dish, or up to MAX_HELD_INGREDIENTS ingredients. */
+  /**
+   * What the player carries (HeldItem ids): one finished dish, one half-made dish (see prepItem), or up
+   * to MAX_HELD_INGREDIENTS ingredients.
+   */
   holding: t.array("string"),
   /** Freshness of the dish they carry: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
   freshness: t.number().default(0),
@@ -64,17 +67,22 @@ export const Ticket = schema({
 }, "Ticket");
 export type Ticket = SchemaType<typeof Ticket>;
 
-export const Stove = schema({
+/** A piece of kitchen equipment on the grid: a stove, an oven, the freezer… */
+export const Appliance = schema({
   id: t.string(),
+  kind: t.string<EquipmentId>(),
   /** Center of the grid square it stands on. */
   x: t.number(),
   y: t.number(),
-  status: t.string<StoveStatus>().default("idle"),
-  /** What's cooking or ready to be picked up; "" when idle. */
+  status: t.string<ApplianceStatus>().default("idle"),
+  /** The dish whose step is in progress or done; "" when idle. */
   dish: t.string<MenuItemId | "">().default(""),
-  /** Freshness of the ready dish: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
+  /** Index into the dish's recipe steps of the step in progress or done. */
+  step: t.uint8().default(0),
+  /** Freshness of a finished dish waiting on it: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
   freshness: t.number().default(0),
-}, "Stove");
+}, "Appliance");
+export type Appliance = SchemaType<typeof Appliance>;
 /** A dish waiting on the pass. */
 export const PassDish = schema({
   dish: t.string<MenuItemId>(),
@@ -82,7 +90,6 @@ export const PassDish = schema({
   freshness: t.number(),
 }, "PassDish");
 export type PassDish = SchemaType<typeof PassDish>;
-export type Stove = SchemaType<typeof Stove>;
 
 /** The one supplier order that can be in progress at a time. */
 export const Delivery = schema({
@@ -97,15 +104,16 @@ export const KitchenState = schema({
   tables: t.map(Table),
   customers: t.map(Customer),
   tickets: t.map(Ticket),
-  stoves: t.map(Stove),
+  /** Everything placed on the kitchen grid, by id. The fridge is fixed and isn't one of them. */
+  appliances: t.map(Appliance),
   /** Dishes waiting on the pass, oldest first. */
   pass: t.array(PassDish),
   /** Ids of the customers queuing at the till, front of the queue first. */
   queue: t.array("string"),
   /** The restaurant's money, in cents. */
   money: t.number().default(0),
-  /** Units of each ingredient in the fridge, by IngredientId. */
-  fridge: t.map("number"),
+  /** Units of each ingredient in the fridge or freezer (see INGREDIENTS[id].storage), by IngredientId. */
+  stock: t.map("number"),
   delivery: Delivery,
   /** Menu items whose recipe the restaurant knows: the menu. Customers order from these, stock or no stock. */
   unlockedRecipes: t.array("string"),

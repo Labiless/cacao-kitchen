@@ -15,7 +15,8 @@ import {
   QUEUE_SPOTS,
   RECIPES,
   REGISTER,
-  STOVE_SIZE,
+  APPLIANCE_SIZE,
+  EQUIPMENT,
   COMPUTER,
   DELIVERY_BAY,
   RECIPE_BOOK,
@@ -45,7 +46,7 @@ import {
   type HeldItem,
   type Player,
   type Role,
-  type Stove,
+  type Appliance,
   type Table,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
@@ -67,12 +68,11 @@ interface CustomerSprite {
   target: { x: number; y: number };
 }
 
-interface StoveSprite {
+interface ApplianceSprite {
   body: Phaser.GameObjects.Rectangle;
-  burners: Phaser.GameObjects.Graphics;
-  /** Flame while cooking, the dish once it's ready. */
+  /** What the appliance is; for the cook, what's on it once a step is done. */
   icon: Phaser.GameObjects.Text;
-  /** Local time (scene clock) at which the current dish started cooking, to animate its progress bar. */
+  /** Local time (scene clock) at which the current step started, to animate its progress bar. */
   startedAt: number;
 }
 
@@ -92,8 +92,8 @@ const NO_INPUT: InputState = { left: false, right: false, up: false, down: false
 /** A popup that only exists in React, opened from the scene. */
 export type ScenePopup =
   | { kind: "ticket"; ticketId: string }
-  | { kind: "fridge" }
-  | { kind: "stove"; stoveId: string }
+  | { kind: "storage"; storage: "fridge" | "freezer" }
+  | { kind: "appliance"; applianceId: string }
   | { kind: "phone" }
   | { kind: "computer" }
   | { kind: "recipeBook" };
@@ -119,7 +119,7 @@ export class KitchenScene extends Phaser.Scene {
   /** Blank slips on the wall, by ticket id: the cook sees where tickets are, not what they say. */
   private tickets = new Map<string, Phaser.GameObjects.Rectangle>();
   private fridge!: Phaser.GameObjects.Rectangle;
-  private stoves = new Map<string, StoveSprite>();
+  private appliances = new Map<string, ApplianceSprite>();
   private placement!: EquipmentPlacement;
   private pass!: Phaser.GameObjects.Rectangle;
   private register!: Phaser.GameObjects.Rectangle;
@@ -264,14 +264,13 @@ export class KitchenScene extends Phaser.Scene {
         this.truckIcon.setVisible(visible);
       }),
 
-      callbacks.onAdd("stoves", (stove, id) => {
-        this.addStove(id, stove);
-        unsubscribe.push(callbacks.listen(stove, "status", (status) => {
-          const sprite = this.stoves.get(id);
+      callbacks.onAdd("appliances", (appliance, id) => {
+        this.addAppliance(id, appliance);
+        unsubscribe.push(callbacks.listen(appliance, "status", (status) => {
+          const sprite = this.appliances.get(id);
           if (!sprite) return;
-          if (status === "cooking") sprite.startedAt = this.time.now;
-          if (!this.sees("kitchen")) return;
-          sprite.icon.setText(status === "cooking" ? "🔥" : status === "ready" && stove.dish ? MENU[stove.dish].emoji : "");
+          if (status === "working") sprite.startedAt = this.time.now;
+          this.refreshApplianceIcon(sprite, appliance);
         }));
       }),
 
@@ -301,7 +300,7 @@ export class KitchenScene extends Phaser.Scene {
       label.setPosition(body.x, body.y - PLAYER_SIZE / 2 - 6);
       // setText is a no-op when nothing changed; `holding` is a list, so it's simplest to check every frame.
       const player = this.room.state.players.get(sessionId);
-      if (player) held.setText(this.heldIcon(player));
+      if (player) held.setText(this.heldIcon(player)).setAlpha(this.isHalfMade(player.holding[0]) ? 0.55 : 1);
       held.setPosition(body.x + PLAYER_SIZE / 2 - 4, body.y + PLAYER_SIZE / 2 - 4);
     }
     for (const { body, icon, target } of this.customers.values()) {
@@ -340,8 +339,8 @@ export class KitchenScene extends Phaser.Scene {
     const interaction = this.currentInteraction();
     if (!interaction || interaction.kind === "blocked") return;
     if (interaction.kind === "readTicket") this.openPopup({ kind: "ticket", ticketId: interaction.ticketId });
-    else if (interaction.kind === "openFridge") this.openPopup({ kind: "fridge" });
-    else if (interaction.kind === "openStove") this.openPopup({ kind: "stove", stoveId: interaction.stoveId });
+    else if (interaction.kind === "openStorage") this.openPopup({ kind: "storage", storage: interaction.storage });
+    else if (interaction.kind === "openAppliance") this.openPopup({ kind: "appliance", applianceId: interaction.applianceId });
     else if (interaction.kind === "openPhone") this.openPopup({ kind: "phone" });
     else if (interaction.kind === "openComputer") this.openPopup({ kind: "computer" });
     else if (interaction.kind === "openRecipeBook") this.openPopup({ kind: "recipeBook" });
@@ -367,8 +366,8 @@ export class KitchenScene extends Phaser.Scene {
     }
     if (target?.kind === "fridge") this.fridge.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
     else this.fridge.setStrokeStyle(2, 0x9bbfcc);
-    for (const [id, { body }] of this.stoves) {
-      if (target?.kind === "stove" && target.id === id) body.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
+    for (const [id, { body }] of this.appliances) {
+      if (target?.kind === "appliance" && target.id === id) body.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
       else body.setStrokeStyle();
     }
     if (target?.kind === "pass") this.pass.setStrokeStyle(HIGHLIGHT.width, HIGHLIGHT.color);
@@ -407,17 +406,19 @@ export class KitchenScene extends Phaser.Scene {
       const half = TICKET_SLOT_SIZE / 2;
       return { kind: "ticket", id: interaction.ticketId, x: slip.x, top: slip.y - half, bottom: slip.y + half };
     }
-    if (interaction.kind === "openFridge") {
+    if (interaction.kind === "openStorage" && interaction.storage === "fridge") {
       return { kind: "fridge", id: "", x: FRIDGE.x, top: FRIDGE.y - FRIDGE.height / 2, bottom: FRIDGE.y + FRIDGE.height / 2 };
     }
-    const stoveId = interaction.kind === "openStove" || interaction.kind === "takeDish" ? interaction.stoveId
-      : interaction.kind === "blocked" && interaction.station === "stove" ? interaction.stationId
+    const applianceId = interaction.kind === "openStorage" ? interaction.applianceId
+      : interaction.kind === "openAppliance" || interaction.kind === "continueRecipe" || interaction.kind === "takeFromAppliance"
+        ? interaction.applianceId
+      : interaction.kind === "blocked" && interaction.station === "appliance" ? interaction.stationId
       : undefined;
-    if (stoveId) {
-      const stove = this.room.state.stoves.get(stoveId);
-      if (!stove) return null;
-      const half = STOVE_SIZE / 2;
-      return { kind: "stove", id: stoveId, x: stove.x, top: stove.y - half, bottom: stove.y + half };
+    if (applianceId) {
+      const appliance = this.room.state.appliances.get(applianceId);
+      if (!appliance) return null;
+      const half = APPLIANCE_SIZE / 2;
+      return { kind: "appliance", id: applianceId, x: appliance.x, top: appliance.y - half, bottom: appliance.y + half };
     }
     if (
       interaction.kind === "placeOnPass" || interaction.kind === "takeFromPass"
@@ -460,7 +461,7 @@ export class KitchenScene extends Phaser.Scene {
     return { kind: "customer", id: customerId, x, top: y - half - 12, bottom: y + half };
   }
 
-  /** A bar above the target of every action in progress and over each stove while cooking, so both players can see it. */
+  /** A bar above the target of every action in progress and over each appliance while working, on the side where it happens. */
   private drawActionProgress() {
     for (const [sessionId, startedAt] of this.actionStartedAt) {
       const player = this.room.state.players.get(sessionId);
@@ -482,12 +483,12 @@ export class KitchenScene extends Phaser.Scene {
       if (table) this.drawBar(table.x, table.y - TABLE_SIZE / 2 - 10, TABLE_SIZE + 10, progress, 0x7bd389);
     }
 
-    for (const [id, { startedAt }] of this.stoves) {
+    for (const [id, { startedAt }] of this.appliances) {
       if (!this.sees("kitchen")) break;
-      const stove = this.room.state.stoves.get(id);
-      if (stove?.status !== "cooking" || !stove.dish) continue;
-      const progress = Math.min(1, (this.time.now - startedAt) / RECIPES[stove.dish].cookMs);
-      this.drawBar(stove.x, stove.y - STOVE_SIZE / 2 - 8, STOVE_SIZE + 6, progress, 0xf2994a);
+      const appliance = this.room.state.appliances.get(id);
+      if (appliance?.status !== "working" || !appliance.dish) continue;
+      const progress = Math.min(1, (this.time.now - startedAt) / RECIPES[appliance.dish].steps[appliance.step].ms);
+      this.drawBar(appliance.x, appliance.y - APPLIANCE_SIZE / 2 - 8, APPLIANCE_SIZE + 6, progress, 0xf2994a);
     }
   }
 
@@ -570,8 +571,8 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   /**
-   * How long cooked dishes have left before they're thrown away: on the pass for everyone, on the
-   * stoves and in the cook's hands only for the cook.
+   * How long finished dishes have left before they're thrown away: on the pass for everyone, on the
+   * appliances and in the cook's hands only for the cook.
    */
   private drawFreshness() {
     [...this.room.state.pass].forEach((onPass, i) => {
@@ -580,9 +581,11 @@ export class KitchenScene extends Phaser.Scene {
     });
     if (!this.sees("kitchen")) return;
 
-    for (const stove of this.room.state.stoves.values()) {
-      if (stove.status === "ready") {
-        this.drawBar(stove.x, stove.y - STOVE_SIZE / 2 - 8, STOVE_SIZE + 6, stove.freshness, levelColor(stove.freshness));
+    for (const appliance of this.room.state.appliances.values()) {
+      // A half-made dish doesn't go stale (its freshness stays 0): no bar.
+      if (appliance.status === "ready" && appliance.freshness > 0) {
+        const { x, y, freshness } = appliance;
+        this.drawBar(x, y - APPLIANCE_SIZE / 2 - 8, APPLIANCE_SIZE + 6, freshness, levelColor(freshness));
       }
     }
     for (const [sessionId, { body }] of this.sprites) {
@@ -603,15 +606,31 @@ export class KitchenScene extends Phaser.Scene {
     this.tweens.add({ targets: text, y: y - 30, alpha: 0, duration: 1600, onComplete: () => text.destroy() });
   }
 
-  private addStove(id: string, stove: Stove) {
-    const body = this.add.rectangle(stove.x, stove.y, STOVE_SIZE, STOVE_SIZE, 0x4a4a4f).setDepth(Depth.Table);
-    const burners = this.add.graphics().setDepth(Depth.Table).lineStyle(3, 0x2a2a2e);
-    const offset = STOVE_SIZE / 4;
-    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      burners.strokeCircle(stove.x + dx * offset, stove.y + dy * offset, 7);
+  private addAppliance(id: string, appliance: Appliance) {
+    const color = Phaser.Display.Color.HexStringToColor(EQUIPMENT[appliance.kind].color).color;
+    const body = this.add.rectangle(appliance.x, appliance.y, APPLIANCE_SIZE, APPLIANCE_SIZE, color).setDepth(Depth.Table);
+    const icon = this.add.text(appliance.x, appliance.y, "", { fontSize: "24px" }).setOrigin(0.5).setDepth(Depth.Label);
+    const sprite = { body, icon, startedAt: 0 };
+    this.appliances.set(id, sprite);
+    this.refreshApplianceIcon(sprite, appliance);
+  }
+
+  /**
+   * Everyone sees what the appliance is. Only the cook sees what's on it once a step is done: the
+   * dish, faded while it's still half-made.
+   */
+  private refreshApplianceIcon({ icon }: ApplianceSprite, appliance: Appliance) {
+    const { dish, status, step } = appliance;
+    if (status === "ready" && dish && this.sees("kitchen")) {
+      const finished = step === RECIPES[dish].steps.length - 1;
+      icon.setText(MENU[dish].emoji).setAlpha(finished ? 1 : 0.55);
+    } else {
+      icon.setText(EQUIPMENT[appliance.kind].emoji).setAlpha(status === "working" && this.sees("kitchen") ? 1 : 0.7);
     }
-    const icon = this.add.text(stove.x, stove.y, "", { fontSize: "24px" }).setOrigin(0.5).setDepth(Depth.Label);
-    this.stoves.set(id, { body, burners, icon, startedAt: 0 });
+  }
+
+  private isHalfMade(item: string | undefined) {
+    return item !== undefined && heldItemInfo(item).partial;
   }
 
   /** What the player is carrying: shown for yourself and for whoever works on your side. */

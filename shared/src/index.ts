@@ -44,12 +44,12 @@ export const Message = {
   CancelOrder: "cancelOrder",
   /** Payload: DiscardTicketMessage. The cook throws a ticket away. */
   DiscardTicket: "discardTicket",
-  /** Payload: TakeIngredientMessage. Sent from the fridge popup. */
+  /** Payload: TakeIngredientMessage. Sent from the fridge or freezer popup. */
   TakeIngredient: "takeIngredient",
-  /** Payload: TakeIngredientMessage. Puts one carried ingredient back, from the fridge popup. */
+  /** Payload: TakeIngredientMessage. Puts one carried ingredient back, from the fridge or freezer popup. */
   PutBackIngredient: "putBackIngredient",
-  /** Payload: CookMessage. Sent from the stove popup. */
-  Cook: "cook",
+  /** Payload: StartRecipeMessage. Sent from an appliance popup: the first step of a recipe. */
+  StartRecipe: "startRecipe",
   /** Payload: BuyEquipmentMessage. Sent when the waiter places what they bought on the computer. */
   BuyEquipment: "buyEquipment",
   /** Payload: BuyRecipeMessage. Sent from the recipe book. */
@@ -65,8 +65,8 @@ export interface OrderSuppliesMessage {
   packs: Partial<Record<IngredientId, number>>;
 }
 
-export interface CookMessage {
-  stoveId: string;
+export interface StartRecipeMessage {
+  applianceId: string;
   dish: MenuItemId;
 }
 
@@ -78,7 +78,7 @@ export interface DishSpoiledMessage {
   /** Where it was thrown away. */
   x: number;
   y: number;
-  /** Who gets to see it: the kitchen for the stove and the cook's hands, everyone for the pass. */
+  /** Who gets to see it: the kitchen for appliances and the cook's hands, everyone for the pass. */
   seenBy: Role | "everyone";
 }
 

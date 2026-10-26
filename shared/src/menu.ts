@@ -1,17 +1,22 @@
-// What customers can order, and the ingredients the kitchen makes it from.
+// What customers can order, the ingredients the kitchen makes it from, and the steps to cook it.
 // Money is always in euro cents (integers), so sums never pick up rounding errors.
 
+import { EQUIPMENT, type ApplianceKind, type EquipmentId } from "./kitchen.ts";
+
+/** In order of complexity, the same order the recipe book shows them in. */
 export const MENU = {
-  chocolate: { label: "Cioccolata calda", emoji: "☕", priceCents: 500 },
-  tea: { label: "Tè caldo", emoji: "🍵", priceCents: 400 },
-  pancakes: { label: "Pancake", emoji: "🥞", priceCents: 600 },
-  egg: { label: "Uovo al tegamino", emoji: "🍳", priceCents: 450 },
-  pudding: { label: "Crema al cioccolato", emoji: "🍮", priceCents: 550 },
-  soup: { label: "Zuppa di verdure", emoji: "🍲", priceCents: 650 },
-  spaghetti: { label: "Spaghetti al burro", emoji: "🍝", priceCents: 700 },
-  waffle: { label: "Waffle al cacao", emoji: "🧇", priceCents: 800 },
-  omelette: { label: "Frittata di verdure", emoji: "🥘", priceCents: 850 },
-  milkTea: { label: "Tè al latte", emoji: "🧋", priceCents: 600 },
+  cola: { label: "Coca-Cola", emoji: "🥤", priceCents: 500 },
+  dhal: { label: "Dhal di lenticchie", emoji: "🍛", priceCents: 1000 },
+  painAuChocolat: { label: "Pain au chocolat", emoji: "🥐", priceCents: 700 },
+  fries: { label: "Patatine fritte", emoji: "🍟", priceCents: 600 },
+  coffee: { label: "Caffè", emoji: "☕", priceCents: 300 },
+  breadNutella: { label: "Pane con la Nutella", emoji: "🍞", priceCents: 500 },
+  airFriedPotatoes: { label: "Patate in friggitrice ad aria", emoji: "🍠", priceCents: 800 },
+  tomatoConfit: { label: "Pomodorini confit", emoji: "🫙", priceCents: 900 },
+  peanutLeeks: { label: "Porri con burro d'arachidi", emoji: "🥬", priceCents: 1000 },
+  veggieBalls: { label: "Polpette vegetariane", emoji: "🧆", priceCents: 1300 },
+  tagliatelle: { label: "Tagliatelle con ragù vegano", emoji: "🍝", priceCents: 1600 },
+  cheesecake: { label: "Cheesecake", emoji: "🍰", priceCents: 1500 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];
@@ -20,16 +25,43 @@ export function isMenuItem(value: unknown): value is MenuItemId {
   return MENU_ITEMS.includes(value as MenuItemId);
 }
 
-/** Ingredients, and the pack they're bought in over the phone. */
+/** Where an ingredient is kept: the fridge is there from the start, the freezer has to be bought. */
+export type Storage = "fridge" | "freezer";
+
+export const STORAGE_INFO: Record<Storage, { label: string; emoji: string }> = {
+  fridge: { label: "Frigo", emoji: "🗄️" },
+  freezer: { label: "Congelatore", emoji: EQUIPMENT.freezer.emoji },
+};
+
+interface Ingredient {
+  label: string;
+  emoji: string;
+  storage: Storage;
+  /** How it's bought over the phone. */
+  pack: { units: number; priceCents: number };
+}
+
+/** Ingredients, where they're kept and the pack they're bought in. */
 export const INGREDIENTS = {
-  cocoa: { label: "Cacao", emoji: "🍫", pack: { units: 3, priceCents: 300 } },
-  teaLeaves: { label: "Foglie di tè", emoji: "🌿", pack: { units: 3, priceCents: 150 } },
-  batter: { label: "Pastella", emoji: "🥣", pack: { units: 3, priceCents: 300 } },
-  eggs: { label: "Uova", emoji: "🥚", pack: { units: 6, priceCents: 300 } },
-  milk: { label: "Latte", emoji: "🥛", pack: { units: 3, priceCents: 200 } },
-  vegetables: { label: "Verdure", emoji: "🥕", pack: { units: 3, priceCents: 200 } },
-  dryPasta: { label: "Spaghetti", emoji: "🌾", pack: { units: 4, priceCents: 200 } },
-} as const;
+  cola: { label: "Coca-Cola", emoji: "🥤", storage: "fridge", pack: { units: 6, priceCents: 1000 } },
+  lentils: { label: "Lenticchie", emoji: "🥫", storage: "fridge", pack: { units: 3, priceCents: 500 } },
+  coconutMilk: { label: "Latte di cocco", emoji: "🥥", storage: "fridge", pack: { units: 3, priceCents: 500 } },
+  puffPastry: { label: "Pasta sfoglia", emoji: "🧈", storage: "fridge", pack: { units: 3, priceCents: 350 } },
+  chocolate: { label: "Cioccolato", emoji: "🍫", storage: "fridge", pack: { units: 3, priceCents: 350 } },
+  frozenFries: { label: "Patatine surgelate", emoji: "❄️", storage: "freezer", pack: { units: 4, priceCents: 800 } },
+  groundCoffee: { label: "Caffè macinato", emoji: "🫘", storage: "fridge", pack: { units: 6, priceCents: 600 } },
+  bread: { label: "Pane", emoji: "🥖", storage: "fridge", pack: { units: 4, priceCents: 300 } },
+  nutella: { label: "Nutella", emoji: "🌰", storage: "fridge", pack: { units: 4, priceCents: 400 } },
+  potatoes: { label: "Patate", emoji: "🥔", storage: "fridge", pack: { units: 3, priceCents: 800 } },
+  cherryTomatoes: { label: "Pomodorini", emoji: "🍅", storage: "fridge", pack: { units: 3, priceCents: 900 } },
+  leeks: { label: "Porri", emoji: "🧅", storage: "fridge", pack: { units: 3, priceCents: 500 } },
+  peanutButter: { label: "Burro d'arachidi", emoji: "🥜", storage: "fridge", pack: { units: 3, priceCents: 500 } },
+  veganMince: { label: "Macinato vegetale", emoji: "🌱", storage: "fridge", pack: { units: 4, priceCents: 1000 } },
+  carrots: { label: "Carote", emoji: "🥕", storage: "fridge", pack: { units: 3, priceCents: 550 } },
+  freshPasta: { label: "Tagliatelle fresche", emoji: "🌾", storage: "fridge", pack: { units: 3, priceCents: 850 } },
+  biscuits: { label: "Biscotti", emoji: "🍪", storage: "fridge", pack: { units: 3, priceCents: 600 } },
+  creamCheese: { label: "Formaggio spalmabile", emoji: "🧀", storage: "fridge", pack: { units: 3, priceCents: 900 } },
+} as const satisfies Record<string, Ingredient>;
 export type IngredientId = keyof typeof INGREDIENTS;
 export const INGREDIENT_IDS = Object.keys(INGREDIENTS) as IngredientId[];
 
@@ -37,38 +69,181 @@ export function isIngredient(value: unknown): value is IngredientId {
   return INGREDIENT_IDS.includes(value as IngredientId);
 }
 
+/** One step of a recipe after taking the ingredients: what to do on which appliance, and how long it takes. */
+export interface RecipeStep {
+  at: ApplianceKind;
+  label: string;
+  ms: number;
+}
+
 interface Recipe {
-  /** One or two ingredients, all used up when cooking. */
+  /** One or two ingredients, all used up by the first step. */
   ingredients: IngredientId[];
-  cookMs: number;
+  /**
+   * What to do with them, in order. None means the ingredient is served as it is: taking it out of
+   * the fridge gives the finished dish.
+   */
+  steps: RecipeStep[];
   /**
    * Price to unlock the recipe in the recipe book. Recipes without one are known from the start; the
-   * others have to be bought before customers can order them and their ingredient can be ordered.
+   * others have to be bought (once the kitchen has what they need) before customers can order them
+   * and their ingredients can be ordered.
    */
   unlockPriceCents?: number;
 }
 
-/** How each menu item is cooked on the stove: which ingredients it takes and how long. */
+/** How each menu item is made. Taking the ingredients counts as the first step (see recipeLevel). */
 export const RECIPES: Record<MenuItemId, Recipe> = {
-  chocolate: { ingredients: ["cocoa"], cookMs: 6000 },
-  tea: { ingredients: ["teaLeaves"], cookMs: 4000 },
-  pancakes: { ingredients: ["batter"], cookMs: 8000 },
-  egg: { ingredients: ["eggs"], cookMs: 5000 },
-  pudding: { ingredients: ["milk"], cookMs: 7000, unlockPriceCents: 1000 },
-  soup: { ingredients: ["vegetables"], cookMs: 9000, unlockPriceCents: 1200 },
-  spaghetti: { ingredients: ["dryPasta"], cookMs: 10000, unlockPriceCents: 1500 },
-  waffle: { ingredients: ["batter", "cocoa"], cookMs: 9000, unlockPriceCents: 1800 },
-  omelette: { ingredients: ["eggs", "vegetables"], cookMs: 9000, unlockPriceCents: 2000 },
-  milkTea: { ingredients: ["teaLeaves", "milk"], cookMs: 5000, unlockPriceCents: 1400 },
+  cola: { ingredients: ["cola"], steps: [] },
+  dhal: {
+    ingredients: ["lentils", "coconutMilk"],
+    steps: [{ at: "stove", label: "Cuoci il dhal", ms: 8000 }],
+  },
+  painAuChocolat: {
+    ingredients: ["puffPastry", "chocolate"],
+    steps: [{ at: "oven", label: "Cuoci in forno", ms: 8000 }],
+    unlockPriceCents: 1500,
+  },
+  fries: {
+    ingredients: ["frozenFries"],
+    steps: [{ at: "fryer", label: "Friggi", ms: 6000 }],
+    unlockPriceCents: 1500,
+  },
+  coffee: {
+    ingredients: ["groundCoffee"],
+    steps: [{ at: "coffeeMachine", label: "Fai il caffè", ms: 3000 }],
+    unlockPriceCents: 1000,
+  },
+  breadNutella: {
+    ingredients: ["bread", "nutella"],
+    steps: [{ at: "workbench", label: "Taglia e spalma", ms: 3000 }],
+    unlockPriceCents: 1000,
+  },
+  airFriedPotatoes: {
+    ingredients: ["potatoes"],
+    steps: [
+      { at: "workbench", label: "Taglia a spicchi", ms: 3000 },
+      { at: "airFryer", label: "Cuoci ad aria", ms: 9000 },
+    ],
+    unlockPriceCents: 2000,
+  },
+  tomatoConfit: {
+    ingredients: ["cherryTomatoes"],
+    steps: [
+      { at: "workbench", label: "Taglia a metà", ms: 3000 },
+      { at: "oven", label: "Cuoci a bassa temperatura", ms: 10000 },
+    ],
+    unlockPriceCents: 2200,
+  },
+  peanutLeeks: {
+    ingredients: ["leeks", "peanutButter"],
+    steps: [
+      { at: "workbench", label: "Affetta i porri", ms: 3000 },
+      { at: "stove", label: "Salta in padella", ms: 7000 },
+    ],
+    unlockPriceCents: 2500,
+  },
+  veggieBalls: {
+    ingredients: ["veganMince", "carrots"],
+    steps: [
+      { at: "workbench", label: "Trita le carote", ms: 3000 },
+      { at: "blender", label: "Impasta", ms: 4000 },
+      { at: "fryer", label: "Friggi le polpette", ms: 7000 },
+    ],
+    unlockPriceCents: 3500,
+  },
+  tagliatelle: {
+    ingredients: ["freshPasta", "veganMince"],
+    steps: [
+      { at: "workbench", label: "Prepara il soffritto", ms: 3000 },
+      { at: "stove", label: "Cuoci il ragù", ms: 8000 },
+      { at: "workbench", label: "Condisci le tagliatelle", ms: 2000 },
+      { at: "stove", label: "Manteca in padella", ms: 4000 },
+    ],
+    unlockPriceCents: 4500,
+  },
+  cheesecake: {
+    ingredients: ["biscuits", "creamCheese"],
+    steps: [
+      { at: "blender", label: "Trita i biscotti", ms: 3000 },
+      { at: "workbench", label: "Componi la torta", ms: 3000 },
+      { at: "oven", label: "Cuoci", ms: 10000 },
+      { at: "workbench", label: "Taglia una fetta", ms: 2000 },
+    ],
+    unlockPriceCents: 5000,
+  },
 };
 
-/** A player carries either one cooked dish, or up to this many ingredients. */
+/** Complexity from 1 to 5: how many steps the recipe takes, taking the ingredients included. */
+export function recipeLevel(dish: MenuItemId) {
+  return RECIPES[dish].steps.length + 1;
+}
+
+/** Where the ingredients for `dish` are taken from: the fridge, the freezer or both. */
+export function recipeStorages(dish: MenuItemId): Storage[] {
+  return [...new Set(RECIPES[dish].ingredients.map((id) => INGREDIENTS[id].storage))];
+}
+
+/** What the kitchen must have before the recipe can be bought: its appliances, and the freezer for frozen goods. */
+export function recipeEquipment(dish: MenuItemId): EquipmentId[] {
+  const needed = new Set<EquipmentId>(RECIPES[dish].steps.map((step) => step.at));
+  if (recipeStorages(dish).includes("freezer")) needed.add("freezer");
+  return [...needed];
+}
+
+/** Every step of a recipe as shown to players, starting with taking the ingredients. */
+export function describeSteps(dish: MenuItemId): Array<{ emoji: string; where: string; what: string }> {
+  const { ingredients, steps } = RECIPES[dish];
+  const taking = recipeStorages(dish).map((storage) => ({
+    emoji: STORAGE_INFO[storage].emoji,
+    where: STORAGE_INFO[storage].label,
+    what: ingredients.filter((id) => INGREDIENTS[id].storage === storage).map((id) => INGREDIENTS[id].label).join(" + "),
+  }));
+  return [
+    ...taking,
+    ...steps.map((step) => ({ emoji: EQUIPMENT[step.at].emoji, where: EQUIPMENT[step.at].label, what: step.label })),
+  ];
+}
+
+/** The dish served exactly as it comes out of the fridge or freezer (like a can of cola), if `ingredient` is one. */
+export function readyMadeDish(ingredient: IngredientId): MenuItemId | null {
+  return MENU_ITEMS.find((id) => RECIPES[id].steps.length === 0 && RECIPES[id].ingredients[0] === ingredient) ?? null;
+}
+
+/**
+ * A player carries one cooked dish, one dish halfway through its recipe, or up to this many
+ * ingredients.
+ */
 export const MAX_HELD_INGREDIENTS = 2;
 
-/** The dish in someone's hands, if what they carry is a dish. */
+/** A dish halfway through its recipe, as carried around: `dish` with its first `stepsDone` steps done. */
+export interface Prep {
+  dish: MenuItemId;
+  stepsDone: number;
+}
+
+/** How a half-made dish is written in `holding`, e.g. "tagliatelle@2". */
+export function prepItem({ dish, stepsDone }: Prep) {
+  return `${dish}@${stepsDone}`;
+}
+
+export function parsePrep(item: unknown): Prep | null {
+  const [dish, done] = String(item).split("@");
+  const stepsDone = Number(done);
+  if (!isMenuItem(dish) || !Number.isInteger(stepsDone)) return null;
+  return stepsDone > 0 && stepsDone < RECIPES[dish].steps.length ? { dish, stepsDone } : null;
+}
+
+/** The dish in someone's hands, if what they carry is a finished dish. */
 export function heldDish(holding: Iterable<string>): MenuItemId | null {
   const [first] = holding;
   return isMenuItem(first) ? first : null;
+}
+
+/** The half-made dish in someone's hands, if that's what they carry. */
+export function heldPrep(holding: Iterable<string>): Prep | null {
+  const [first] = holding;
+  return first === undefined ? null : parsePrep(first);
 }
 
 /** The ingredients in someone's hands (none if they carry a dish). */
@@ -77,7 +252,7 @@ export function heldIngredients(holding: Iterable<string>): IngredientId[] {
 }
 
 /**
- * The ingredients left in hand after cooking `dish`, or null if they don't carry everything it needs.
+ * The ingredients left in hand after starting `dish`, or null if they don't carry everything it needs.
  * Extra ingredients the recipe doesn't use stay in hand.
  */
 export function ingredientsAfterCooking(dish: MenuItemId, holding: Iterable<string>): IngredientId[] | null {
@@ -96,12 +271,17 @@ export const STARTING_RECIPES = MENU_ITEMS.filter((id) => RECIPES[id].unlockPric
 /** What the restaurant opens with: some cash and an empty fridge, so the first thing to do is order ingredients. */
 export const STARTING_MONEY_CENTS = 2000;
 
-/** Anything a player can carry: an ingredient or a cooked dish. */
-export type HeldItem = IngredientId | MenuItemId;
+/** Anything a player can carry: an ingredient, a cooked dish or a half-made one (see prepItem). */
+export type HeldItem = IngredientId | MenuItemId | string;
 
-/** Label and emoji of something a player is carrying. */
-export function heldItemInfo(item: HeldItem): { label: string; emoji: string } {
-  return isIngredient(item) ? INGREDIENTS[item] : MENU[item];
+/** Label and emoji of something a player is carrying; `partial` for a half-made dish. */
+export function heldItemInfo(item: HeldItem): { label: string; emoji: string; partial: boolean } {
+  if (isIngredient(item)) return { ...INGREDIENTS[item], partial: false };
+  if (isMenuItem(item)) return { ...MENU[item], partial: false };
+  const prep = parsePrep(item);
+  if (!prep) return { label: "", emoji: "", partial: false };
+  const { label, emoji } = MENU[prep.dish];
+  return { label: `${label} (${prep.stepsDone}/${RECIPES[prep.dish].steps.length})`, emoji, partial: true };
 }
 
 const EURO = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });

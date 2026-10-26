@@ -4,9 +4,12 @@ import {
   INGREDIENT_IDS,
   MAX_HELD_INGREDIENTS,
   Message,
+  STORAGE_INFO,
   heldIngredients,
+  readyMadeDish,
   unlockedIngredients,
   type IngredientId,
+  type Storage,
   type TakeIngredientMessage,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
@@ -14,20 +17,26 @@ import { useRoomState } from "./useRoomState.ts";
 
 interface Props {
   room: KitchenRoom;
+  storage: Storage;
   onClose: () => void;
 }
 
-/** The open fridge: the cook takes ingredients (up to two in hand) or puts back the ones they carry. */
-export function FridgeDialog({ room, onClose }: Props) {
-  const stock = useRoomState(room, (state) => JSON.stringify(state.fridge.toJSON()));
-  const fridge = JSON.parse(stock) as Record<string, number>;
-  const unlocked = useRoomState(room, (state) => unlockedIngredients(state).join(","));
-  const shelves = INGREDIENT_IDS.filter((id) => unlocked.split(",").includes(id) || (fridge[id] ?? 0) > 0);
+/**
+ * The open fridge or freezer: the cook takes ingredients (up to two in hand) or puts back the ones
+ * they carry that belong here. Something served as it is (a can of cola) comes out as the dish.
+ */
+export function StorageDialog({ room, storage, onClose }: Props) {
+  const stockKey = useRoomState(room, (state) => JSON.stringify(state.stock.toJSON()));
+  const stock = JSON.parse(stockKey) as Record<string, number>;
+  const unlocked = useRoomState(room, (state) => unlockedIngredients(state).join(",")).split(",");
+  const kept = (id: IngredientId) => INGREDIENTS[id].storage === storage;
+  const shelves = INGREDIENT_IDS.filter((id) => kept(id) && (unlocked.includes(id) || (stock[id] ?? 0) > 0));
   const inHand = useRoomState(room, (state) => {
     const holding = state.players.get(room.sessionId)?.holding ?? [];
     return heldIngredients(holding).join(",");
   }).split(",").filter(Boolean) as IngredientId[];
   const handsFull = inHand.length >= MAX_HELD_INGREDIENTS;
+  const { label, emoji } = STORAGE_INFO[storage];
 
   function take(ingredient: IngredientId) {
     room.send(Message.TakeIngredient, { ingredient } satisfies TakeIngredientMessage);
@@ -47,26 +56,32 @@ export function FridgeDialog({ room, onClose }: Props) {
 
   return (
     <div className="backdrop">
-      <div className="card dialog fridge-dialog" role="dialog" aria-label="Frigo">
-        <h2>Frigo</h2>
+      <div className="card dialog storage-dialog" role="dialog" aria-label={label}>
+        <h2>{emoji} {label}</h2>
         <small className="hint">
           Puoi portare fino a {MAX_HELD_INGREDIENTS} ingredienti. Si ordinano al telefono, sopra il frigo.
         </small>
+        {shelves.length === 0 && <p className="hint">Vuoto.</p>}
         <div className="menu-grid">
           {shelves.map((id) => {
-            const units = fridge[id] ?? 0;
+            const units = stock[id] ?? 0;
+            // Ready-made dishes need empty hands.
+            const blocked = readyMadeDish(id) ? inHand.length > 0 : handsFull;
             return (
               <button
                 key={id}
                 type="button"
                 className="menu-item"
-                disabled={units === 0 || handsFull}
+                disabled={units === 0 || blocked}
                 onClick={() => take(id)}
               >
                 <span className="menu-emoji">{INGREDIENTS[id].emoji}</span>
                 <span>
                   {INGREDIENTS[id].label}
-                  <small className="recipe">{units === 0 ? "Finito" : `× ${units}`}</small>
+                  <small className="recipe">
+                    {units === 0 ? "Finito" : `× ${units}`}
+                    {readyMadeDish(id) && " · pronto da servire"}
+                  </small>
                 </span>
               </button>
             );
@@ -80,11 +95,19 @@ export function FridgeDialog({ room, onClose }: Props) {
           ) : (
             <div className="menu-grid">
               {inHand.map((id, i) => (
-                <button key={`${id}-${i}`} type="button" className="menu-item" onClick={() => putBack(id)}>
+                <button
+                  key={`${id}-${i}`}
+                  type="button"
+                  className="menu-item"
+                  disabled={!kept(id)}
+                  onClick={() => putBack(id)}
+                >
                   <span className="menu-emoji">{INGREDIENTS[id].emoji}</span>
                   <span>
                     {INGREDIENTS[id].label}
-                    <small className="recipe">Rimetti in frigo</small>
+                    <small className="recipe">
+                      {kept(id) ? `Rimetti nel ${label.toLowerCase()}` : `Va nel ${STORAGE_INFO[INGREDIENTS[id].storage].label.toLowerCase()}`}
+                    </small>
                   </span>
                 </button>
               ))}

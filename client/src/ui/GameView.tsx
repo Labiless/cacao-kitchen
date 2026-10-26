@@ -3,8 +3,8 @@ import { attendedCustomer, formatMoney, type EquipmentId, type MenuItemId } from
 import type { KitchenRoom } from "../network.ts";
 import { copyToClipboard, inviteLink } from "../invite.ts";
 import { MODAL_OPEN_KEY, OPEN_POPUP_EVENT, START_PLACEMENT_EVENT, createGame, type ScenePopup } from "../game/createGame.ts";
-import { FridgeDialog } from "./FridgeDialog.tsx";
-import { StoveDialog } from "./StoveDialog.tsx";
+import { StorageDialog } from "./StorageDialog.tsx";
+import { ApplianceDialog } from "./ApplianceDialog.tsx";
 import { PhoneDialog } from "./PhoneDialog.tsx";
 import { ComputerDialog } from "./ComputerDialog.tsx";
 import { RecipeBookDialog } from "./RecipeBookDialog.tsx";
@@ -26,7 +26,7 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const [copied, setCopied] = useState<"ok" | "error" | null>(null);
   const money = useRoomState(room, (state) => state.money);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
-  /** Popup opened from the scene (a ticket, the fridge, a stove, the phone, the computer, the recipe book), if any. */
+  /** Popup opened from the scene (a ticket, the fridge or freezer, an appliance, the phone, the computer, the recipe book), if any. */
   const [popup, setPopup] = useState<ScenePopup | null>(null);
 
   // Phaser owns the canvas; React only mounts/unmounts it.
@@ -105,8 +105,8 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
       </button>
 
       {popup?.kind === "ticket" && <TicketDialog room={room} ticketId={popup.ticketId} onClose={closePopup} />}
-      {popup?.kind === "fridge" && <FridgeDialog room={room} onClose={closePopup} />}
-      {popup?.kind === "stove" && <StoveDialog room={room} stoveId={popup.stoveId} onClose={closePopup} />}
+      {popup?.kind === "storage" && <StorageDialog room={room} storage={popup.storage} onClose={closePopup} />}
+      {popup?.kind === "appliance" && <ApplianceDialog room={room} applianceId={popup.applianceId} onClose={closePopup} />}
       {popup?.kind === "phone" && <PhoneDialog room={room} onClose={closePopup} />}
       {popup?.kind === "computer" && <ComputerDialog room={room} onBuy={startPlacement} onClose={closePopup} />}
       {popup?.kind === "recipeBook" && <RecipeBookDialog room={room} onClose={closePopup} />}

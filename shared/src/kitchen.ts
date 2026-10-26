@@ -11,7 +11,7 @@ import {
   type Box,
   type Point,
 } from "./world.ts";
-import type { KitchenState } from "./state.ts";
+import type { Appliance, KitchenState } from "./state.ts";
 
 /** How many tickets fit on the kitchen wall. When it's full, the waiter can't take new orders. */
 export const MAX_TICKETS = 3;
@@ -66,24 +66,68 @@ function cellBox(col: number, row: number): Box {
   return { ...cellCenter(col, row), width: KITCHEN_GRID.cell, height: KITCHEN_GRID.cell };
 }
 
-/** A stove fills most of its grid square. */
-export const STOVE_SIZE = 46;
+/** An appliance fills most of its grid square. */
+export const APPLIANCE_SIZE = 46;
 
-export function stoveBox(stove: Point): Box {
-  return { x: stove.x, y: stove.y, width: STOVE_SIZE, height: STOVE_SIZE };
+export function applianceBox(appliance: Point): Box {
+  return { x: appliance.x, y: appliance.y, width: APPLIANCE_SIZE, height: APPLIANCE_SIZE };
 }
 
-/** The kitchen opens with one stove, across from the fridge, by the middle wall. */
-export const STARTING_STOVES = [{ col: 4, row: 5 }];
+export const EQUIPMENT_IDS = [
+  "stove", "oven", "fryer", "airFryer", "workbench", "blender", "coffeeMachine", "freezer",
+] as const;
+export type EquipmentId = (typeof EQUIPMENT_IDS)[number];
+/** Appliances recipe steps happen on: everything but the freezer, which only stores ingredients. */
+export type ApplianceKind = Exclude<EquipmentId, "freezer">;
 
-/** Things the waiter can buy on the computer and place in the kitchen, one grid square each. */
-export const EQUIPMENT = {
-  stove: { label: "Fornello", emoji: "🔥", description: "Un altro fuoco per cucinare in parallelo.", priceCents: 1500 },
-} as const;
-export type EquipmentId = keyof typeof EQUIPMENT;
+interface EquipmentInfo {
+  label: string;
+  emoji: string;
+  description: string;
+  priceCents: number;
+  /** Fill color of its square in the kitchen. */
+  color: string;
+  /** Only one per kitchen. Everything else can be bought again, to cook more dishes at once. */
+  unique?: boolean;
+}
+
+/** Appliances the waiter can buy on the computer and place in the kitchen, one grid square each. */
+export const EQUIPMENT: Record<EquipmentId, EquipmentInfo> = {
+  stove: { label: "Fornello", emoji: "🔥", description: "Per cuocere in pentola e in padella.", priceCents: 1500, color: "#4a4a4f" },
+  oven: { label: "Forno", emoji: "♨️", description: "Per cuocere al forno.", priceCents: 2500, color: "#8c4a2f" },
+  fryer: { label: "Friggitrice", emoji: "🛢️", description: "Per friggere.", priceCents: 2000, color: "#b08a2e" },
+  airFryer: { label: "Friggitrice ad aria", emoji: "💨", description: "Per cuocere ad aria calda.", priceCents: 2000, color: "#5b7f95" },
+  workbench: { label: "Piano di lavoro", emoji: "🔪", description: "Per tagliare, spalmare e comporre.", priceCents: 800, color: "#a07850" },
+  blender: { label: "Frullatore", emoji: "🌀", description: "Per tritare e impastare.", priceCents: 1500, color: "#6e8f6a" },
+  coffeeMachine: { label: "Macchina del caffè", emoji: "🫖", description: "Per il caffè.", priceCents: 1800, color: "#3d2b22" },
+  freezer: {
+    label: "Congelatore",
+    emoji: "🧊",
+    description: "Conserva i surgelati. Se ne può avere uno solo.",
+    priceCents: 2500,
+    color: "#bfdde8",
+    unique: true,
+  },
+};
 
 export function isEquipment(value: unknown): value is EquipmentId {
-  return typeof value === "string" && value in EQUIPMENT;
+  return EQUIPMENT_IDS.includes(value as EquipmentId);
+}
+
+/** The kitchen opens with the fridge and one stove, across from the fridge, by the middle wall. */
+export const STARTING_EQUIPMENT: Array<{ kind: EquipmentId; col: number; row: number }> = [{ kind: "stove", col: 4, row: 5 }];
+
+/** Whether the kitchen has at least one appliance of this kind. */
+export function hasEquipment(state: KitchenState, kind: EquipmentId) {
+  for (const appliance of state.appliances.values()) {
+    if (appliance.kind === kind) return true;
+  }
+  return false;
+}
+
+/** Whether the waiter can buy another one of these (unique appliances only once). */
+export function canBuyEquipment(state: KitchenState, kind: EquipmentId) {
+  return !EQUIPMENT[kind].unique || !hasEquipment(state, kind);
 }
 
 /** Opening in the middle wall, reachable from both sides: the cook leaves dishes, the waiter picks them up. */
@@ -92,26 +136,31 @@ export const PASS = { x: WALL.x, y: 470, width: 64, height: 56 } as const;
 export const PASS_CAPACITY = 3;
 
 /**
- * Seconds a cooked dish stays good, from the moment it's ready until the waiter picks it up from the
+ * Seconds a finished dish stays good, from the moment it's ready until the waiter picks it up from the
  * pass (the clock stops in the waiter's hands). When it runs out the dish is thrown away.
  */
 export const DISH_FRESH_S = 25;
 
-export const STOVE_STATUSES = ["idle", "cooking", "ready"] as const;
-export type StoveStatus = (typeof STOVE_STATUSES)[number];
+/**
+ * idle    → empty, ready for a step
+ * working → a step is in progress
+ * ready   → the step is done: what's on it (a finished dish or a half-made one) waits to be picked up
+ */
+export const APPLIANCE_STATUSES = ["idle", "working", "ready"] as const;
+export type ApplianceStatus = (typeof APPLIANCE_STATUSES)[number];
 
 /** Whether a player centered at `p` would overlap any piece of kitchen furniture (the pass included). */
-export function overlapsKitchenFurniture(p: Point, stoves: Iterable<Point>) {
+export function overlapsKitchenFurniture(p: Point, appliances: Iterable<Point>) {
   if (overlapsBox(p, FRIDGE) || overlapsBox(p, PHONE) || overlapsBox(p, PASS) || overlapsTicketSlots(p)) return true;
-  for (const stove of stoves) {
-    if (overlapsBox(p, stoveBox(stove))) return true;
+  for (const appliance of appliances) {
+    if (overlapsBox(p, applianceBox(appliance))) return true;
   }
   return false;
 }
 
 /**
  * Whether a new piece of equipment can go in this grid square: inside the kitchen, clear of the fixed
- * furniture, of the other stoves and of the cook (so nobody gets stuck inside it).
+ * furniture, of the other appliances and of the cook (so nobody gets stuck inside it).
  */
 export function canPlaceEquipment(state: KitchenState, col: number, row: number) {
   if (!Number.isInteger(col) || !Number.isInteger(row)) return false;
@@ -120,8 +169,8 @@ export function canPlaceEquipment(state: KitchenState, col: number, row: number)
   const cell = cellBox(col, row);
   const fixed: Box[] = [FRIDGE, PHONE, PASS, DELIVERY_BAY, ...TICKET_SLOTS.map((s) => ({ ...s, width: TICKET_SLOT_SIZE, height: TICKET_SLOT_SIZE }))];
   if (fixed.some((box) => boxesOverlap(cell, box))) return false;
-  for (const stove of state.stoves.values()) {
-    if (boxesOverlap(cell, stoveBox(stove))) return false;
+  for (const appliance of state.appliances.values()) {
+    if (boxesOverlap(cell, applianceBox(appliance))) return false;
   }
   for (const player of state.players.values()) {
     if (overlapsBox(player, cell)) return false;
@@ -142,23 +191,32 @@ export function isNearDeliveryBay(p: Point) {
   return isNearBox(p, DELIVERY_BAY);
 }
 
-/** The stove a player at `p` would use: the closest one within reach. */
-export function nearestStove(state: KitchenState, p: Point) {
+/** The appliance a player at `p` would use: the closest one within reach. */
+export function nearestAppliance(state: KitchenState, p: Point): Appliance | null {
   let best = null;
   let bestDistance = Infinity;
-  for (const stove of state.stoves.values()) {
-    if (!isNearBox(p, stoveBox(stove))) continue;
-    const distance = Math.hypot(p.x - stove.x, p.y - stove.y);
+  for (const appliance of state.appliances.values()) {
+    if (!isNearBox(p, applianceBox(appliance))) continue;
+    const distance = Math.hypot(p.x - appliance.x, p.y - appliance.y);
     if (distance < bestDistance) {
-      best = stove;
+      best = appliance;
       bestDistance = distance;
     }
   }
   return best;
 }
 
-export function isNearStove(p: Point, stove: Point) {
-  return isNearBox(p, stoveBox(stove));
+export function isNearAppliance(p: Point, appliance: Point) {
+  return isNearBox(p, applianceBox(appliance));
+}
+
+/** Whether a player at `p` can reach the fridge, or a freezer, to take or put back what's kept there. */
+export function isNearStorage(state: KitchenState, p: Point, storage: "fridge" | "freezer") {
+  if (storage === "fridge") return isNearFridge(p);
+  for (const appliance of state.appliances.values()) {
+    if (appliance.kind === "freezer" && isNearAppliance(p, appliance)) return true;
+  }
+  return false;
 }
 
 export function isNearPass(p: Point) {
