@@ -39,6 +39,7 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
   }, [onClose]);
 
   if (!ticket) return null;
+  const missing = missingEquipment(room.state, ticket.item);
 
   return (
     <div className="backdrop">
@@ -52,10 +53,10 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
             1 × {MENU[ticket.item].emoji} {MENU[ticket.item].label}
           </p>
           <RecipeSteps dish={ticket.item} />
-          {missingEquipment(room.state, ticket.item).length > 0 && (
+          {missing.length > 0 && (
             <p className="error">
               In cucina manca:{" "}
-              {missingEquipment(room.state, ticket.item).map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}
+              {missing.map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}
             </p>
           )}
         </div>

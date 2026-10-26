@@ -13,7 +13,7 @@ import {
   type TakeIngredientMessage,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
-import { useRoomState } from "./useRoomState.ts";
+import { useRoomState, useRoomValue } from "./useRoomState.ts";
 
 interface Props {
   room: KitchenRoom;
@@ -26,8 +26,7 @@ interface Props {
  * they carry that belong here. Something served as it is (a can of cola) comes out as the dish.
  */
 export function StorageDialog({ room, storage, onClose }: Props) {
-  const stockKey = useRoomState(room, (state) => JSON.stringify(state.stock.toJSON()));
-  const stock = JSON.parse(stockKey) as Record<string, number>;
+  const stock = useRoomValue(room, (state) => state.stock.toJSON() as Record<string, number>);
   const unlocked = useRoomState(room, (state) => unlockedIngredients(state).join(",")).split(",");
   const kept = (id: IngredientId) => INGREDIENTS[id].storage === storage;
   const shelves = INGREDIENT_IDS.filter((id) => kept(id) && (unlocked.includes(id) || (stock[id] ?? 0) > 0));

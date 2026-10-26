@@ -37,6 +37,7 @@ import {
   heldIngredients,
   heldPrep,
   ingredientsAfterCooking,
+  isFinalStep,
   isMenuItem,
   recipeEquipment,
   type IngredientId,
@@ -109,7 +110,7 @@ export function interactionLabel(interaction: Interaction) {
     case "openRecipeBook": return "Consulta il libro delle ricette";
     case "takeFromAppliance": {
       const { label } = MENU[interaction.dish];
-      return interaction.step === RECIPES[interaction.dish].steps.length - 1 ? `Prendi ${label}` : `Prendi ${label} (a metà)`;
+      return isFinalStep(interaction.dish, interaction.step) ? `Prendi ${label}` : `Prendi ${label} (a metà)`;
     }
     case "placeOnPass": return "Posa sul bancone";
     case "takeFromPass": return `Prendi ${MENU[interaction.dish].label}`;

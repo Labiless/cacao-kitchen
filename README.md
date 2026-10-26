@@ -23,6 +23,3 @@ Per giocare in due: un giocatore clicca **Crea stanza** e condivide il codice, l
 inserisce e clicca **Entra**. Dalla stessa rete locale si può aprire l'indirizzo "Network"
 stampato da Vite.
 
-
-git add .
-git commit -m "feat: new feature description"

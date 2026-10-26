@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
   EQUIPMENT,
   MAX_LEVEL,
   MENU,
+  MENU_ITEMS,
   formatMoney,
   missingEquipment,
   recipeComplexity,
@@ -26,10 +27,12 @@ const LEVELS = Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).filter((level)
  */
 export function RecipeBookDialog({ room, onClose }: Props) {
   const level = useRoomState(room, (state) => state.level);
-  /** Missing appliances per recipe, re-read whenever something is bought. */
-  const missing = JSON.parse(useRoomState(room, (state) => JSON.stringify(
-    Object.fromEntries(Object.keys(MENU).map((id) => [id, missingEquipment(state, id as MenuItemId)])),
-  ))) as Record<MenuItemId, ReturnType<typeof missingEquipment>>;
+  /** Missing appliances per recipe: recomputed only when the kitchen's appliances change. */
+  const kitchen = useRoomState(room, (state) => [...state.appliances.values()].map((a) => a.kind).sort().join(","));
+  const missing = useMemo(
+    () => Object.fromEntries(MENU_ITEMS.map((id) => [id, missingEquipment(room.state, id)])) as Record<MenuItemId, ReturnType<typeof missingEquipment>>,
+    [room, kitchen],
+  );
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {

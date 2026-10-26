@@ -39,6 +39,8 @@ export class Placement {
   private ghost: Phaser.GameObjects.Rectangle;
   private ghostIcon: Phaser.GameObjects.Text;
   private banner: Phaser.GameObjects.Text;
+  /** Decorations when the slot circles were last drawn: they only change when one is bought. */
+  private drawnDecorations = -1;
 
   constructor(private scene: Phaser.Scene, private room: KitchenRoom, depth: number) {
     this.guides = scene.add.graphics().setDepth(depth).setVisible(false);
@@ -87,11 +89,10 @@ export class Placement {
     for (const object of [this.guides, this.ghost, this.ghostIcon, this.banner]) object.setVisible(false);
   }
 
-  /** Re-checks the spot under the mouse: it can become free or taken while placing (players move). */
+  /** Re-checks the spot under the mouse: a grid square can become free or taken while placing (the cook moves). */
   update() {
     if (!this.item) return;
-    // Decoration slots free up and fill as the waiter walks over them.
-    if (this.item.type === "decoration") this.drawGuides();
+    if (this.item.type === "decoration" && this.room.state.decorations.size !== this.drawnDecorations) this.drawGuides();
     if (this.target) this.showGhost();
   }
 
@@ -137,6 +138,7 @@ export class Placement {
   /** The kitchen grid for equipment, or a circle on every free decoration spot. */
   private drawGuides() {
     this.guides.clear();
+    this.drawnDecorations = this.room.state.decorations.size;
     if (this.item?.type === "equipment") {
       const { cell, cols, rows } = KITCHEN_GRID;
       this.guides.lineStyle(1, 0x3b2a1e, 0.35);

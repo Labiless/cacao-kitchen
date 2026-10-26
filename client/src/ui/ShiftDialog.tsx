@@ -13,7 +13,7 @@ import {
   type ShiftReport,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
-import { useRoomState } from "./useRoomState.ts";
+import { useRoomState, useRoomValue } from "./useRoomState.ts";
 
 interface Props {
   room: KitchenRoom;
@@ -31,10 +31,9 @@ export function ShiftDialog({ room }: Props) {
   const money = useRoomState(room, (state) => state.money);
   const stars = useRoomState(room, (state) => state.stars);
   const ratedShifts = useRoomState(room, (state) => state.ratedShifts);
-  const report = JSON.parse(useRoomState(room, (state) => JSON.stringify(state.shift.report.toJSON()))) as ShiftReport;
-  const players = JSON.parse(useRoomState(room, (state) => JSON.stringify(
-    [...state.players.entries()].map(([id, p]) => ({ id, name: p.name, role: p.role, ready: p.ready })),
-  ))) as Array<{ id: string; name: string; role: keyof typeof ROLE_INFO; ready: boolean }>;
+  const report = useRoomValue(room, (state) => state.shift.report.toJSON() as ShiftReport);
+  const players = useRoomValue(room, (state) =>
+    [...state.players.entries()].map(([id, p]) => ({ id, name: p.name, role: p.role, ready: p.ready })));
   const meReady = players.find((p) => p.id === room.sessionId)?.ready ?? false;
 
   const income = report.salesCents + report.tipsCents;

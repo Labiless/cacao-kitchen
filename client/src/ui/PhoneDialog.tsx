@@ -10,7 +10,7 @@ import {
   type OrderSuppliesMessage,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
-import { useRoomState } from "./useRoomState.ts";
+import { useRoomState, useRoomValue } from "./useRoomState.ts";
 import { sounds } from "../game/Sounds.ts";
 
 interface Props {
@@ -27,8 +27,7 @@ const DELIVERY_STATUS_TEXT = {
 export function PhoneDialog({ room, onClose }: Props) {
   const money = useRoomState(room, (state) => state.money);
   const delivery = useRoomState(room, (state) => state.delivery.status);
-  const stockKey = useRoomState(room, (state) => JSON.stringify(state.stock.toJSON()));
-  const stock = JSON.parse(stockKey) as Record<string, number>;
+  const stock = useRoomValue(room, (state) => state.stock.toJSON() as Record<string, number>);
   // Only what the menu needs: new ingredients show up once their recipe is bought.
   const ingredients = useRoomState(room, (state) => unlockedIngredients(state).join(","))
     .split(",")

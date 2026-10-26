@@ -59,7 +59,7 @@ export const INGREDIENTS = {
   groundCoffee: { label: "Caffè macinato", emoji: "🫘", storage: "fridge", pack: { units: 2, priceCents: 350 } },
   eggs: { label: "Uova", emoji: "🥚", storage: "fridge", pack: { units: 2, priceCents: 350 } },
   frozenFries: { label: "Patatine surgelate", emoji: "❄️", storage: "freezer", pack: { units: 2, priceCents: 350 } },
-  noodles: { label: "Noodles", emoji: "🥡", storage: "fridge", pack: { units: 2, priceCents: 300 } },
+  noodlePack: { label: "Noodles", emoji: "🥡", storage: "fridge", pack: { units: 2, priceCents: 300 } },
   cashews: { label: "Anacardi", emoji: "🌰", storage: "fridge", pack: { units: 2, priceCents: 300 } },
   cherryTomatoes: { label: "Pomodorini", emoji: "🍅", storage: "fridge", pack: { units: 2, priceCents: 550 } },
   leeks: { label: "Porri", emoji: "🧅", storage: "fridge", pack: { units: 2, priceCents: 300 } },
@@ -130,7 +130,7 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
     unlockLevel: 2,
   },
   noodles: {
-    ingredients: ["noodles", "cashews"],
+    ingredients: ["noodlePack", "cashews"],
     steps: [
       { at: "workbench", label: "Trita gli anacardi", ms: 2000 },
       { at: "stove", label: "Salta nel wok", ms: 6000 },
@@ -183,6 +183,11 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
     unlockLevel: 10,
   },
 };
+
+/** Whether `step` is the last of the dish's recipe: once it's done, the dish is finished. */
+export function isFinalStep(dish: MenuItemId, step: number) {
+  return step === RECIPES[dish].steps.length - 1;
+}
 
 /** Complexity from 1 to 5: how many steps the recipe takes, taking the ingredients included. */
 export function recipeComplexity(dish: MenuItemId) {
