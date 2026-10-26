@@ -30,6 +30,7 @@ import {
   cleanName,
   customerReadyToPay,
   unlockedMenu,
+  orderChoices,
   INGREDIENTS,
   INGREDIENT_IDS,
   STARTING_MONEY_CENTS,
@@ -150,8 +151,9 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     this.onMessage(Message.PlaceOrder, (client, message: PlaceOrderMessage) => {
       const customer = attendedCustomer(this.state, client.sessionId, "ordering");
       const slot = freeTicketSlot(this.state);
-      if (!customer || !isMenuItem(message?.item) || !unlockedMenu(this.state).includes(message.item)) return;
-      if (slot === null) return;
+      if (!customer || !isMenuItem(message?.item) || slot === null) return;
+      // Only one of the dishes the dialog offered (which may not be the one the customer showed).
+      if (!orderChoices(customer.id, customer.wants, unlockedMenu(this.state)).includes(message.item)) return;
 
       const ticket = new Ticket();
       ticket.number = ++this.ticketCount;

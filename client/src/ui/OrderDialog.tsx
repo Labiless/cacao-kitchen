@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { MENU, Message, orderPhrase, unlockedMenu, type MenuItemId, type PlaceOrderMessage } from "@cacao/shared";
+import { useEffect } from "react";
+import { MENU, Message, orderChoices, unlockedMenu, type MenuItemId, type PlaceOrderMessage } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 
 interface Props {
@@ -8,13 +8,15 @@ interface Props {
   wants: MenuItemId;
 }
 
-/** Opened when the waiter takes an order: the customer says what they want, the waiter picks it from the menu. */
+/**
+ * Opened when the waiter takes an order: the customer shows a picture of the dish they want, the waiter
+ * clicks the matching one among a few. The click sends the order straight away.
+ */
 export function OrderDialog({ room, customerId, wants }: Props) {
-  const [selected, setSelected] = useState<MenuItemId | null>(null);
+  const choices = orderChoices(customerId, wants, unlockedMenu(room.state));
 
-  function send() {
-    if (!selected) return;
-    room.send(Message.PlaceOrder, { item: selected } satisfies PlaceOrderMessage);
+  function send(item: MenuItemId) {
+    room.send(Message.PlaceOrder, { item } satisfies PlaceOrderMessage);
   }
 
   function cancel() {
@@ -24,7 +26,6 @@ export function OrderDialog({ room, customerId, wants }: Props) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") cancel();
-      if (event.key === "Enter") send();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -33,21 +34,20 @@ export function OrderDialog({ room, customerId, wants }: Props) {
   return (
     <div className="backdrop">
       <div className="card dialog order-dialog" role="dialog" aria-label="Ordinazione">
-        <p className="speech">“{orderPhrase(customerId, wants)}”</p>
+        <p className="speech order-wish" aria-label="Il cliente indica un piatto">{MENU[wants].emoji}</p>
 
         <div>
-          <small className="hint">Seleziona cosa ordina il cliente</small>
-          <div className="menu-grid">
-            {unlockedMenu(room.state).map((id) => (
+          <small className="hint">Tocca il piatto che vuole il cliente</small>
+          <div className="order-choices">
+            {choices.map((id) => (
               <button
                 key={id}
                 type="button"
-                className={id === selected ? "menu-item selected" : "menu-item"}
-                aria-pressed={id === selected}
-                onClick={() => setSelected(id)}
+                className="menu-item order-choice"
+                aria-label={MENU[id].label}
+                onClick={() => send(id)}
               >
-                <span className="menu-emoji">{MENU[id].emoji}</span>
-                {MENU[id].label}
+                {MENU[id].emoji}
               </button>
             ))}
           </div>
@@ -55,7 +55,6 @@ export function OrderDialog({ room, customerId, wants }: Props) {
 
         <div className="dialog-actions">
           <button type="button" className="secondary" onClick={cancel}>Annulla</button>
-          <button type="button" disabled={!selected} onClick={send}>Invia ordine</button>
         </div>
       </div>
     </div>

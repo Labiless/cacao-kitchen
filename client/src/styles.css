@@ -181,6 +181,25 @@ button.danger { background: #c0392b; }
   font-size: 18px;
   font-style: italic;
 }
+.order-wish {
+  font-size: 56px;
+  font-style: normal;
+  line-height: 1;
+  text-align: center;
+}
+.order-choices {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+.order-choice {
+  justify-content: center;
+  padding: 14px 0;
+  font-size: 40px;
+  line-height: 1;
+}
+.order-choice:hover { border-color: var(--accent); }
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

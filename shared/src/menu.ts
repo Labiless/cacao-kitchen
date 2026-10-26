@@ -2,16 +2,16 @@
 // Money is always in euro cents (integers), so sums never pick up rounding errors.
 
 export const MENU = {
-  chocolate: { label: "Cioccolata calda", emoji: "☕", spoken: "una cioccolata calda", priceCents: 500 },
-  tea: { label: "Tè caldo", emoji: "🍵", spoken: "un tè caldo", priceCents: 400 },
-  pancakes: { label: "Pancake", emoji: "🥞", spoken: "dei pancake", priceCents: 600 },
-  egg: { label: "Uovo al tegamino", emoji: "🍳", spoken: "un uovo al tegamino", priceCents: 450 },
-  pudding: { label: "Crema al cioccolato", emoji: "🍮", spoken: "una crema al cioccolato", priceCents: 550 },
-  soup: { label: "Zuppa di verdure", emoji: "🍲", spoken: "una zuppa di verdure", priceCents: 650 },
-  spaghetti: { label: "Spaghetti al burro", emoji: "🍝", spoken: "degli spaghetti al burro", priceCents: 700 },
-  waffle: { label: "Waffle al cacao", emoji: "🧇", spoken: "un waffle al cacao", priceCents: 800 },
-  omelette: { label: "Frittata di verdure", emoji: "🥘", spoken: "una frittata di verdure", priceCents: 850 },
-  milkTea: { label: "Tè al latte", emoji: "🧋", spoken: "un tè al latte", priceCents: 600 },
+  chocolate: { label: "Cioccolata calda", emoji: "☕", priceCents: 500 },
+  tea: { label: "Tè caldo", emoji: "🍵", priceCents: 400 },
+  pancakes: { label: "Pancake", emoji: "🥞", priceCents: 600 },
+  egg: { label: "Uovo al tegamino", emoji: "🍳", priceCents: 450 },
+  pudding: { label: "Crema al cioccolato", emoji: "🍮", priceCents: 550 },
+  soup: { label: "Zuppa di verdure", emoji: "🍲", priceCents: 650 },
+  spaghetti: { label: "Spaghetti al burro", emoji: "🍝", priceCents: 700 },
+  waffle: { label: "Waffle al cacao", emoji: "🧇", priceCents: 800 },
+  omelette: { label: "Frittata di verdure", emoji: "🥘", priceCents: 850 },
+  milkTea: { label: "Tè al latte", emoji: "🧋", priceCents: 600 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];
@@ -111,17 +111,30 @@ export function formatMoney(cents: number) {
   return EURO.format(cents / 100);
 }
 
-/** Ways a customer can phrase their order; `{item}` is replaced by the item's spoken name. */
-const ORDER_PHRASES = [
-  "Vorrei {item}, per favore.",
-  "Per me {item}!",
-  "Mi porterebbe {item}?",
-  "Buongiorno! Prendo {item}.",
-];
+/** How many dishes the waiter picks from when taking an order, the right one included. */
+export const ORDER_CHOICES = 4;
 
-/** What the customer says when ordering. Picked from their id, so it stays the same if the dialog reopens. */
-export function orderPhrase(customerId: string, item: MenuItemId) {
-  let hash = 0;
-  for (const char of customerId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return ORDER_PHRASES[hash % ORDER_PHRASES.length].replace("{item}", MENU[item].spoken);
+/**
+ * The dishes offered to the waiter when taking this customer's order: what they want plus others
+ * off the menu, shuffled. Picked from their id, so it stays the same if the dialog reopens and the
+ * server can check the waiter picked one of them.
+ */
+export function orderChoices(customerId: string, wants: MenuItemId, menu: readonly MenuItemId[]): MenuItemId[] {
+  let seed = 0;
+  for (const char of customerId) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
+  // Scramble the bits: ids are sequential ("c1", "c2"…), so their hashes are too close to each other.
+  seed = Math.imul(seed ^ (seed >>> 16), 0x45d9f3b) >>> 0;
+  seed = Math.imul(seed ^ (seed >>> 16), 0x45d9f3b) >>> 0;
+  // Small deterministic generator (LCG), good enough to shuffle a handful of items.
+  const random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+  const shuffle = <T>(items: T[]) => {
+    for (let i = items.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [items[i], items[j]] = [items[j], items[i]];
+    }
+    return items;
+  };
+
+  const others = shuffle(menu.filter((id) => id !== wants)).slice(0, ORDER_CHOICES - 1);
+  return shuffle([wants, ...others]);
 }
