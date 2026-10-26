@@ -75,18 +75,18 @@ export const CUSTOMER_TIMING = {
    * Seconds of patience in each status where the customer is waiting on the waiter.
    * Patience refills on entering each of these and is paused in every other status.
    */
-  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 40, queuing: 60 } as Partial<Record<CustomerStatus, number>>,
+  patienceS: { waiting: 24, readyToOrder: 30, waitingFood: 48, queuing: 72 } as Partial<Record<CustomerStatus, number>>,
   /**
    * Extra seconds of patience while waiting for food, for every cooking step the dish takes: a cola
    * is expected at once, a five-step dish is worth waiting for.
    */
-  foodPatiencePerStepS: 20,
+  foodPatiencePerStepS: 24,
   /** Seconds a seated customer spends reading the menu before they're ready to order. */
-  readingMenuS: 4,
+  readingMenuS: 4.8,
   /** Seconds a customer spends eating before they get up and go pay. */
-  eatingS: 6,
+  eatingS: 7.2,
   /** Seconds between one customer arriving and the next: random in this range. */
-  spawnIntervalS: { min: 4, max: 12 },
+  spawnIntervalS: { min: 4.8, max: 14.4 },
   /**
    * In a line (at the entrance or at the till), patience drains this much faster for every other
    * customer in the same line: 0.2 means 1.2× with one other, 1.4× with two, and so on.
