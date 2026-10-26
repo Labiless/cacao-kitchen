@@ -219,11 +219,6 @@ class Sounds {
           if (Math.random() < 0.6) this.tone(output, now(), 300 + Math.random() * 500, 0.03, { gain: 0.04 * Math.random(), slideTo: 900 });
         });
         break;
-      case "airFryer":
-        // Fan.
-        loop.sources.push(this.noiseLoop(output, { filter: "lowpass", freq: 900, gain: 0.07 }));
-        loop.sources.push(this.hum(output, 180, 0.012));
-        break;
       case "workbench":
         // Knife on the board.
         every(320, () => {

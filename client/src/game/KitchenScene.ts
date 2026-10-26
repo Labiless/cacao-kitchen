@@ -17,6 +17,7 @@ import {
   REGISTER,
   APPLIANCE_SIZE,
   EQUIPMENT,
+  stepMs,
   COMPUTER,
   DELIVERY_BAY,
   DECORATIONS,
@@ -76,8 +77,11 @@ interface ApplianceSprite {
   body: Phaser.GameObjects.Rectangle;
   /** What the appliance is; for the cook, what's on it once a step is done. */
   icon: Phaser.GameObjects.Text;
-  /** Local time (scene clock) at which the current step started, to animate its progress bar. */
+  /** Its level, shown in a corner from level 2. */
+  tier: Phaser.GameObjects.Text;
+  /** Local time (scene clock) at which the current step started, and how long it lasts, for its progress bar. */
   startedAt: number;
+  durationMs: number;
 }
 
 interface TableSprite {
@@ -288,14 +292,13 @@ export class KitchenScene extends Phaser.Scene {
         }
       }),
 
-      callbacks.listen("level", (level, previous) => {
-        if (previous !== undefined && level > previous) this.playSound("levelUp", null);
-      }),
-
       callbacks.listen(this.room.state.shift, "phase", (phase, previous) => {
         if (phase === "open") this.playSound("shiftOpen", null);
         if (phase === "closing") this.playSound("shiftClosing", null);
-        if (phase === "break" && previous === "closing") this.playSound("shiftEnd", null);
+        // A shift passed is a level passed: fanfare (just a chime once at the top level).
+        if (phase === "break" && previous === "closing") {
+          this.playSound(this.room.state.shift.report.newLevel ? "levelUp" : "shiftEnd", null);
+        }
         if (phase === "gameOver") this.playSound("gameOver", null);
         if (phase === "break" || phase === "gameOver") sounds.stopAllLoops();
       }),
@@ -314,9 +317,17 @@ export class KitchenScene extends Phaser.Scene {
         unsubscribe.push(callbacks.listen(appliance, "status", (status) => {
           const sprite = this.appliances.get(id);
           if (!sprite) return;
-          if (status === "working") sprite.startedAt = this.time.now;
+          if (status === "working" && appliance.dish) {
+            sprite.startedAt = this.time.now;
+            // Fixed when the step starts: upgrading mid-step only speeds up the next ones.
+            sprite.durationMs = stepMs(RECIPES[appliance.dish].steps[appliance.step].ms, appliance.tier);
+          }
           this.refreshApplianceIcon(sprite, appliance);
           this.applianceSound(id, appliance);
+        }));
+        unsubscribe.push(callbacks.listen(appliance, "tier", (tier, previous) => {
+          this.appliances.get(id)?.tier.setText(tier > 1 ? `Lv${tier}` : "");
+          if (previous !== undefined && tier > previous) this.playSound("sparkle", "kitchen", appliance.x);
         }));
       }),
       callbacks.onRemove("appliances", (_appliance, id) => sounds.stopLoop(id)),
@@ -609,11 +620,11 @@ export class KitchenScene extends Phaser.Scene {
       if (table) this.drawBar(table.x, table.y - TABLE_SIZE / 2 - 10, TABLE_SIZE + 10, progress, 0x7bd389);
     }
 
-    for (const [id, { startedAt }] of this.appliances) {
+    for (const [id, { startedAt, durationMs }] of this.appliances) {
       if (!this.sees("kitchen")) break;
       const appliance = this.room.state.appliances.get(id);
       if (appliance?.status !== "working" || !appliance.dish) continue;
-      const progress = Math.min(1, (this.time.now - startedAt) / RECIPES[appliance.dish].steps[appliance.step].ms);
+      const progress = Math.min(1, (this.time.now - startedAt) / durationMs);
       this.drawBar(appliance.x, appliance.y - APPLIANCE_SIZE / 2 - 8, APPLIANCE_SIZE + 6, progress, 0xf2994a);
     }
   }
@@ -736,7 +747,19 @@ export class KitchenScene extends Phaser.Scene {
     const color = Phaser.Display.Color.HexStringToColor(EQUIPMENT[appliance.kind].color).color;
     const body = this.add.rectangle(appliance.x, appliance.y, APPLIANCE_SIZE, APPLIANCE_SIZE, color).setDepth(Depth.Table);
     const icon = this.add.text(appliance.x, appliance.y, "", { fontSize: "24px" }).setOrigin(0.5).setDepth(Depth.Label);
-    const sprite = { body, icon, startedAt: 0 };
+    const half = APPLIANCE_SIZE / 2;
+    const tier = this.add
+      .text(appliance.x + half - 2, appliance.y + half - 1, "", {
+        ...TEXT_STYLE,
+        fontSize: "10px",
+        fontStyle: "bold",
+        color: "#fffaf3",
+        backgroundColor: "#d99a00",
+        padding: { x: 2, y: 0 },
+      })
+      .setOrigin(1, 1)
+      .setDepth(Depth.Label);
+    const sprite = { body, icon, tier, startedAt: 0, durationMs: 1 };
     this.appliances.set(id, sprite);
     this.refreshApplianceIcon(sprite, appliance);
   }

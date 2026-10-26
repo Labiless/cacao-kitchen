@@ -52,6 +52,8 @@ export const Message = {
   PutBackIngredient: "putBackIngredient",
   /** Payload: StartRecipeMessage. Sent from an appliance popup: the first step of a recipe. */
   StartRecipe: "startRecipe",
+  /** Payload: UpgradeApplianceMessage. Sent from an appliance popup: the cook takes it up a level. */
+  UpgradeAppliance: "upgradeAppliance",
   /** Payload: BuyEquipmentMessage. Sent when the waiter places what they bought on the computer. */
   BuyEquipment: "buyEquipment",
   /** Payload: BuyDecorationMessage. Sent when the waiter places a decoration they bought on the computer. */
@@ -74,6 +76,10 @@ export interface OrderSuppliesMessage {
 export interface StartRecipeMessage {
   applianceId: string;
   dish: MenuItemId;
+}
+
+export interface UpgradeApplianceMessage {
+  applianceId: string;
 }
 
 export interface BuyDecorationMessage {

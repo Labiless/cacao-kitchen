@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import {
-  EQUIPMENT,
-  MENU,
+  MAX_LEVEL,
   Message,
   attendedCustomer,
   formatClock,
   formatMoney,
   formatStars,
-  levelRange,
-  missingEquipment,
-  recipesAtLevel,
   type MenuItemId,
 } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
@@ -52,12 +48,8 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   const stars = useRoomState(room, (state) => state.stars);
   const ratedShifts = useRoomState(room, (state) => state.ratedShifts);
   const level = useRoomState(room, (state) => state.level);
-  const xp = useRoomState(room, (state) => state.xp);
   /** Between shifts, or the game is over: the report is up and nothing else can be done. */
   const reportUp = phase === "break" || phase === "gameOver";
-  /** "Level N!" notice with the recipes it taught, shown for a few seconds after levelling up. */
-  const [levelUp, setLevelUp] = useState<number | null>(null);
-  const shownLevel = useRef(level);
   const muted = useSyncExternalStore(subscribeMuted, getMuted);
   const [ordering, setOrdering] = useState<{ customerId: string; wants: MenuItemId } | null>(null);
   /** Popup opened from the scene (a ticket, the fridge or freezer, an appliance, the phone, the computer, the recipe book), if any. */
@@ -94,18 +86,6 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
   useEffect(() => {
     gameRef.current?.registry.set(MODAL_OPEN_KEY, popup !== null || reportUp);
   }, [popup, reportUp]);
-
-  // Announce a new level (not a restart, which takes it back to 1).
-  useEffect(() => {
-    if (level > shownLevel.current) setLevelUp(level);
-    shownLevel.current = level;
-  }, [level]);
-
-  useEffect(() => {
-    if (levelUp === null) return;
-    const timer = setTimeout(() => setLevelUp(null), 6000);
-    return () => clearTimeout(timer);
-  }, [levelUp]);
 
   function restart(event: MouseEvent<HTMLButtonElement>) {
     // Drop focus, or the space bar (used to interact) would click it again.
@@ -162,7 +142,9 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
       <div className="hud">
         <div className="money" title="Cassa del ristorante">💰 {formatMoney(money)}</div>
-        <LevelBadge level={level} xp={xp} />
+        <div className="money" title={level === MAX_LEVEL ? "Livello massimo" : "Ogni turno superato è un livello in più"}>
+          🏅 Livello {level}
+        </div>
         {ratedShifts > 0 && (
           <div className="money" title={`Media dei voti di ${ratedShifts} ${ratedShifts === 1 ? "turno" : "turni"}`}>
             ⭐ {formatStars(stars)}
@@ -207,8 +189,6 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
         </button>
       </div>
 
-      {levelUp !== null && <LevelUpNotice room={room} level={levelUp} />}
-
       {popup?.kind === "ticket" && <TicketDialog room={room} ticketId={popup.ticketId} onClose={closePopup} />}
       {popup?.kind === "storage" && <StorageDialog room={room} storage={popup.storage} onClose={closePopup} />}
       {popup?.kind === "appliance" && <ApplianceDialog room={room} applianceId={popup.applianceId} onClose={closePopup} />}
@@ -224,34 +204,3 @@ export function GameView({ room, askName, onNameChosen, onLeave }: Props) {
 
 const subscribeMuted = (listener: () => void) => sounds.subscribe(listener);
 const getMuted = () => sounds.muted;
-
-/** Level and progress towards the next one. */
-function LevelBadge({ level, xp }: { level: number; xp: number }) {
-  const { from, to } = levelRange(level);
-  const progress = to === null ? 1 : (xp - from) / (to - from);
-  return (
-    <div className="money level" title={to === null ? "Livello massimo" : `${xp - from}/${to - from} punti esperienza al livello ${level + 1}`}>
-      🏅 Livello {level}
-      <span className="xp-bar"><span style={{ width: `${Math.round(progress * 100)}%` }} /></span>
-    </div>
-  );
-}
-
-/** "Level N!" with the recipes just learnt, and what the kitchen still needs to put them on the menu. */
-function LevelUpNotice({ room, level }: { room: KitchenRoom; level: number }) {
-  const recipes = recipesAtLevel(level);
-  return (
-    <div className="toast" role="status">
-      <strong>🎉 Livello {level}!</strong>
-      {recipes.map((id) => {
-        const needs = missingEquipment(room.state, id);
-        return (
-          <span key={id}>
-            Nuova ricetta: {MENU[id].emoji} {MENU[id].label}
-            {needs.length > 0 && ` · serve ${needs.map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}`}
-          </span>
-        );
-      })}
-    </div>
-  );
-}

@@ -70,7 +70,10 @@ export type Interaction =
   | { kind: "openStorage"; storage: Storage; applianceId?: string }
   /** Client-only: opens the phone popup. The server is involved once something is bought. */
   | { kind: "openPhone" }
-  /** Client-only: opens an appliance popup to start a recipe. The server is involved once a dish is picked. */
+  /**
+   * Client-only: opens an appliance popup, to start a recipe or upgrade it. The server is involved
+   * once a dish is picked or the upgrade bought.
+   */
   | { kind: "openAppliance"; applianceId: string }
   /** Puts the half-made dish in hand on the appliance for its next step. */
   | { kind: "continueRecipe"; applianceId: string; dish: MenuItemId; step: number }
@@ -99,7 +102,7 @@ export function interactionLabel(interaction: Interaction) {
     case "takeOrder": return "Prendi l'ordinazione";
     case "readTicket": return "Leggi la comanda";
     case "openStorage": return interaction.storage === "fridge" ? "Apri il frigo" : "Apri il congelatore";
-    case "openAppliance": return "Inizia una ricetta";
+    case "openAppliance": return "Usa l'elettrodomestico";
     case "continueRecipe": return RECIPES[interaction.dish].steps[interaction.step].label;
     case "openPhone": return "Usa il telefono";
     case "openComputer": return "Usa il computer";
@@ -140,20 +143,15 @@ export function entranceLine(state: KitchenState) {
     .sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
 }
 
-/** Recipes the restaurant knows at its current level, whether or not it can make them yet. */
-export function knownRecipes(state: KitchenState): MenuItemId[] {
+/**
+ * The restaurant's menu: every recipe learnt up to its current level, in menu order. Customers order
+ * from these whether or not there's stock, or the appliances, to make them.
+ */
+export function unlockedMenu(state: KitchenState): MenuItemId[] {
   return MENU_ITEMS.filter((id) => RECIPES[id].unlockLevel <= state.level);
 }
 
-/**
- * The restaurant's menu: the recipes it knows and has the appliances for, in menu order. Customers
- * order from these, stock or no stock.
- */
-export function unlockedMenu(state: KitchenState): MenuItemId[] {
-  return knownRecipes(state).filter((id) => missingEquipment(state, id).length === 0);
-}
-
-/** Appliances the kitchen still needs before the recipe can go on the menu. */
+/** Appliances the kitchen still needs before it can make the recipe. */
 export function missingEquipment(state: KitchenState, dish: MenuItemId): EquipmentId[] {
   return recipeEquipment(dish).filter((kind) => !hasEquipment(state, kind));
 }
@@ -200,13 +198,16 @@ function applianceInteraction(
       : blocked(`Prossimo passaggio: ${EQUIPMENT[next.at].emoji} ${EQUIPMENT[next.at].label}`);
   }
   if (heldDish(holding)) return blocked("Hai già un piatto in mano");
-  if (!heldIngredients(holding).length) return blocked("Ti servono degli ingredienti");
+  // Empty hands: the popup shows what can be cooked here and the upgrade.
+  if (!heldIngredients(holding).length) return { kind: "openAppliance", applianceId };
 
   const startable = (dish: MenuItemId) => ingredientsAfterCooking(dish, holding) !== null;
   if (recipesStartingAt(state, kind).some(startable)) return { kind: "openAppliance", applianceId };
   // Point the cook to where what they carry is started instead.
   const elsewhere = unlockedMenu(state).find((dish) => RECIPES[dish].steps.length && startable(dish));
   if (!elsewhere) return blocked("Nessuna ricetta del menù con questi ingredienti");
+  const missing = missingEquipment(state, elsewhere)[0];
+  if (missing) return blocked(`${MENU[elsewhere].label}: in cucina manca ${EQUIPMENT[missing].emoji} ${EQUIPMENT[missing].label}`);
   const first = EQUIPMENT[RECIPES[elsewhere].steps[0].at];
   return blocked(`${MENU[elsewhere].label}: si inizia da ${first.emoji} ${first.label}`);
 }

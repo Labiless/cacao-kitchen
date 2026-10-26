@@ -74,7 +74,7 @@ export function applianceBox(appliance: Point): Box {
 }
 
 export const EQUIPMENT_IDS = [
-  "stove", "oven", "fryer", "airFryer", "workbench", "blender", "coffeeMachine", "freezer",
+  "stove", "oven", "fryer", "workbench", "blender", "coffeeMachine", "freezer",
 ] as const;
 export type EquipmentId = (typeof EQUIPMENT_IDS)[number];
 /** Appliances recipe steps happen on: everything but the freezer, which only stores ingredients. */
@@ -96,7 +96,6 @@ export const EQUIPMENT: Record<EquipmentId, EquipmentInfo> = {
   stove: { label: "Fornello", emoji: "🔥", description: "Per cuocere in pentola e in padella.", priceCents: 1500, color: "#4a4a4f" },
   oven: { label: "Forno", emoji: "♨️", description: "Per cuocere al forno.", priceCents: 2500, color: "#8c4a2f" },
   fryer: { label: "Friggitrice", emoji: "🛢️", description: "Per friggere.", priceCents: 2000, color: "#b08a2e" },
-  airFryer: { label: "Friggitrice ad aria", emoji: "💨", description: "Per cuocere ad aria calda.", priceCents: 2000, color: "#5b7f95" },
   workbench: { label: "Piano di lavoro", emoji: "🔪", description: "Per tagliare, spalmare e comporre.", priceCents: 800, color: "#a07850" },
   blender: { label: "Frullatore", emoji: "🌀", description: "Per tritare e impastare.", priceCents: 1500, color: "#6e8f6a" },
   coffeeMachine: { label: "Macchina del caffè", emoji: "🫖", description: "Per il caffè.", priceCents: 1800, color: "#3d2b22" },
@@ -116,6 +115,34 @@ export function isEquipment(value: unknown): value is EquipmentId {
 
 /** The kitchen opens with the fridge and one stove, across from the fridge, by the middle wall. */
 export const STARTING_EQUIPMENT: Array<{ kind: EquipmentId; col: number; row: number }> = [{ kind: "stove", col: 4, row: 5 }];
+
+/**
+ * Appliance levels: every one bought starts at level 1, and the cook can upgrade it on the spot to
+ * make every step on it quicker. `speed` scales step times; `priceFactor` is the upgrade's price
+ * as a multiple of the appliance's.
+ */
+export const APPLIANCE_TIERS = [
+  { speed: 1, priceFactor: 0 },
+  { speed: 0.75, priceFactor: 1 },
+  { speed: 0.55, priceFactor: 2 },
+] as const;
+export const MAX_APPLIANCE_TIER = APPLIANCE_TIERS.length;
+
+/** Whether this kind of appliance has levels: everything recipe steps happen on (not the freezer). */
+export function isUpgradable(kind: EquipmentId): kind is ApplianceKind {
+  return kind !== "freezer";
+}
+
+/** Price of taking an appliance from `tier` to the next level, or null if it can't go higher. */
+export function upgradePrice(kind: EquipmentId, tier: number) {
+  if (!isUpgradable(kind) || tier >= MAX_APPLIANCE_TIER) return null;
+  return EQUIPMENT[kind].priceCents * APPLIANCE_TIERS[tier].priceFactor;
+}
+
+/** How long a step lasts on an appliance at this level. */
+export function stepMs(baseMs: number, tier: number) {
+  return Math.round(baseMs * APPLIANCE_TIERS[Math.max(0, Math.min(MAX_APPLIANCE_TIER, tier) - 1)].speed);
+}
 
 /** Whether the kitchen has at least one appliance of this kind. */
 export function hasEquipment(state: KitchenState, kind: EquipmentId) {

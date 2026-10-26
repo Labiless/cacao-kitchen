@@ -11,6 +11,7 @@ import {
   type Point,
 } from "./world.ts";
 import type { KitchenState } from "./state.ts";
+import { RECIPES, type MenuItemId } from "./menu.ts";
 
 export const TABLE_SIZE = 60;
 
@@ -74,7 +75,12 @@ export const CUSTOMER_TIMING = {
    * Seconds of patience in each status where the customer is waiting on the waiter.
    * Patience refills on entering each of these and is paused in every other status.
    */
-  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 60, queuing: 60 } as Partial<Record<CustomerStatus, number>>,
+  patienceS: { waiting: 20, readyToOrder: 25, waitingFood: 40, queuing: 60 } as Partial<Record<CustomerStatus, number>>,
+  /**
+   * Extra seconds of patience while waiting for food, for every cooking step the dish takes: a cola
+   * is expected at once, a five-step dish is worth waiting for.
+   */
+  foodPatiencePerStepS: 20,
   /** Seconds a seated customer spends reading the menu before they're ready to order. */
   readingMenuS: 4,
   /** Seconds a customer spends eating before they get up and go pay. */
@@ -164,11 +170,19 @@ export function seatPosition(table: Point) {
 
 /** Things the waiter can buy on the computer to make the dining hall nicer. They stay from one shift to the next. */
 export const DECORATIONS = {
+  cactus: { label: "Cactus", emoji: "🌵", description: "Piccolo e senza pretese.", priceCents: 400, beauty: 1 },
   candles: { label: "Candele", emoji: "🕯️", description: "Un po' di atmosfera.", priceCents: 600, beauty: 1 },
   flowers: { label: "Vaso di fiori", emoji: "💐", description: "Freschi e colorati.", priceCents: 800, beauty: 1 },
+  sunflowers: { label: "Girasoli", emoji: "🌻", description: "Un po' di sole in sala.", priceCents: 1000, beauty: 2 },
+  lantern: { label: "Lanterna", emoji: "🏮", description: "Luce calda.", priceCents: 1000, beauty: 2 },
   plant: { label: "Pianta", emoji: "🪴", description: "Un angolo verde.", priceCents: 1200, beauty: 2 },
+  mirror: { label: "Specchio", emoji: "🪞", description: "Fa sembrare la sala più grande.", priceCents: 1500, beauty: 2 },
+  clock: { label: "Orologio a pendolo", emoji: "🕰️", description: "Elegante, e scandisce il tempo.", priceCents: 1800, beauty: 3 },
   painting: { label: "Quadro", emoji: "🖼️", description: "Un po' d'arte alle pareti.", priceCents: 2000, beauty: 3 },
+  bookshelf: { label: "Libreria", emoji: "📚", description: "Qualcosa da sfogliare mentre si aspetta.", priceCents: 2500, beauty: 3 },
+  sofa: { label: "Divanetto", emoji: "🛋️", description: "Un angolo comodo.", priceCents: 3500, beauty: 4 },
   aquarium: { label: "Acquario", emoji: "🐠", description: "Rilassa chi aspetta.", priceCents: 4000, beauty: 5 },
+  statue: { label: "Statua", emoji: "🗿", description: "Fa parlare di sé.", priceCents: 5000, beauty: 6 },
   fountain: { label: "Fontana", emoji: "⛲", description: "Il rumore dell'acqua.", priceCents: 6000, beauty: 7 },
   piano: { label: "Pianoforte", emoji: "🎹", description: "Il tocco di classe.", priceCents: 8000, beauty: 9 },
 } as const;
@@ -180,13 +194,14 @@ export function isDecoration(value: unknown): value is DecorationId {
 }
 
 /** Beauty points at which decorations count in full towards how nice the hall is (see hallBeauty). */
-export const FULL_DECOR_BEAUTY = 20;
+export const FULL_DECOR_BEAUTY = 30;
 
 export const DECORATION_SIZE = 32;
 
 /**
- * Spots in the hall where a decoration can go, one each: along the walls, clear of the tables, the
- * lines, the till, the computer, the recipe book and the pass, and out of the way between them.
+ * Spots in the hall where a decoration can go, one each: along the walls and in the open floor between
+ * the tables, clear of the tables, the lines, the till, the computer, the recipe book and the pass.
+ * Decorations don't block anyone, so they can go where people walk.
  */
 export const DECORATION_SLOTS: readonly Point[] = [
   { x: 380, y: 24 },
@@ -198,25 +213,28 @@ export const DECORATION_SLOTS: readonly Point[] = [
   { x: WORLD.width - 22, y: 300 },
   { x: WORLD.width - 22, y: 420 },
   { x: 420, y: 570 },
+  { x: 540, y: 90 },
+  { x: 540, y: 255 },
+  { x: 700, y: 255 },
+  { x: 400, y: 455 },
+  { x: 680, y: 460 },
 ];
 
-/** Whether a player centered at `p` would overlap a decoration in one of these slots. */
-export function overlapsDecorations(p: Point, slots: Iterable<number>) {
-  for (const slot of slots) {
-    const { x, y } = DECORATION_SLOTS[slot];
-    if (overlapsBox(p, { x, y, width: DECORATION_SIZE, height: DECORATION_SIZE })) return true;
-  }
-  return false;
-}
-
-/** Whether a decoration can go in this slot: nothing there yet, and nobody standing on it (or they'd get stuck). */
+/** Whether a decoration can go in this slot: nothing there yet. Decorations don't get in anyone's way. */
 export function canPlaceDecoration(state: KitchenState, slot: number) {
   if (!Number.isInteger(slot) || slot < 0 || slot >= DECORATION_SLOTS.length) return false;
   for (const decoration of state.decorations.values()) {
     if (decoration.slot === slot) return false;
   }
-  for (const player of state.players.values()) {
-    if (overlapsDecorations(player, [slot])) return false;
-  }
   return true;
+}
+
+/**
+ * Seconds of patience a customer has in a status where it drains, or 0 where it doesn't. Waiting for
+ * food depends on the dish: the more steps it takes, the longer they're willing to wait.
+ */
+export function patienceSeconds(status: CustomerStatus, wants: MenuItemId) {
+  const base = CUSTOMER_TIMING.patienceS[status] ?? 0;
+  if (status !== "waitingFood") return base;
+  return base + CUSTOMER_TIMING.foodPatiencePerStepS * RECIPES[wants].steps.length;
 }

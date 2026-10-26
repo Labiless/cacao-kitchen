@@ -3,20 +3,24 @@
 
 import { EQUIPMENT, type ApplianceKind, type EquipmentId } from "./kitchen.ts";
 
-/** In order of complexity, the same order the recipe book shows them in. */
+/**
+ * In the order they're learnt. What a customer pays grows with how much work the dish takes:
+ * 4 € for every step (taking the ingredients included) minus 1 €, plus 1 € for every ingredient
+ * after the first. Cola, served as it is, costs 3 €; a five-step dish with three ingredients 21 €.
+ */
 export const MENU = {
-  cola: { label: "Coca-Cola", emoji: "🥤", priceCents: 500 },
-  dhal: { label: "Dhal di lenticchie", emoji: "🍛", priceCents: 1000 },
+  cola: { label: "Coca-Cola", emoji: "🥤", priceCents: 300 },
+  dhal: { label: "Dhal di lenticchie", emoji: "🍛", priceCents: 800 },
+  breadNutella: { label: "Pane con la Nutella", emoji: "🍞", priceCents: 800 },
+  coffee: { label: "Caffè", emoji: "☕", priceCents: 700 },
   frittata: { label: "Frittata", emoji: "🍳", priceCents: 700 },
-  fries: { label: "Patatine fritte", emoji: "🍟", priceCents: 600 },
-  coffee: { label: "Caffè", emoji: "☕", priceCents: 300 },
-  breadNutella: { label: "Pane con la Nutella", emoji: "🍞", priceCents: 500 },
-  airFriedPotatoes: { label: "Patate in friggitrice ad aria", emoji: "🍠", priceCents: 800 },
-  tomatoConfit: { label: "Pomodorini confit", emoji: "🫙", priceCents: 900 },
-  peanutLeeks: { label: "Porri con burro d'arachidi", emoji: "🥬", priceCents: 1000 },
-  veggieBalls: { label: "Polpette vegetariane", emoji: "🧆", priceCents: 1300 },
-  tagliatelle: { label: "Tagliatelle con ragù vegano", emoji: "🍝", priceCents: 2000 },
-  cheesecake: { label: "Cheesecake ai frutti di bosco", emoji: "🍰", priceCents: 1800 },
+  fries: { label: "Patatine fritte", emoji: "🍟", priceCents: 700 },
+  noodles: { label: "Noodles con anacardi", emoji: "🍜", priceCents: 1200 },
+  tomatoConfit: { label: "Pomodorini confit", emoji: "🍅", priceCents: 1100 },
+  peanutLeeks: { label: "Porri con burro d'arachidi", emoji: "🥬", priceCents: 1200 },
+  veggieBalls: { label: "Polpette vegetariane", emoji: "🧆", priceCents: 1600 },
+  tagliatelle: { label: "Tagliatelle con ragù vegano", emoji: "🍝", priceCents: 2100 },
+  cheesecake: { label: "Cheesecake ai frutti di bosco", emoji: "🍰", priceCents: 2100 },
 } as const;
 export type MenuItemId = keyof typeof MENU;
 export const MENU_ITEMS = Object.keys(MENU) as MenuItemId[];
@@ -41,26 +45,31 @@ interface Ingredient {
   pack: { units: number; priceCents: number };
 }
 
-/** Ingredients, where they're kept and the pack they're bought in. */
+/**
+ * Ingredients, where they're kept and the pack they're bought in. Packs are small (yesterday's stock
+ * is thrown away, so big packs mostly end up in the bin) and priced so that a dish's ingredients cost
+ * about a quarter of what the customer pays for it.
+ */
 export const INGREDIENTS = {
-  cola: { label: "Coca-Cola", emoji: "🥤", storage: "fridge", pack: { units: 6, priceCents: 1000 } },
-  lentils: { label: "Lenticchie", emoji: "🥫", storage: "fridge", pack: { units: 3, priceCents: 500 } },
-  coconutMilk: { label: "Latte di cocco", emoji: "🥥", storage: "fridge", pack: { units: 3, priceCents: 500 } },
-  eggs: { label: "Uova", emoji: "🥚", storage: "fridge", pack: { units: 6, priceCents: 1400 } },
-  frozenFries: { label: "Patatine surgelate", emoji: "❄️", storage: "freezer", pack: { units: 4, priceCents: 800 } },
-  groundCoffee: { label: "Caffè macinato", emoji: "🫘", storage: "fridge", pack: { units: 6, priceCents: 600 } },
-  bread: { label: "Pane", emoji: "🥖", storage: "fridge", pack: { units: 4, priceCents: 300 } },
-  nutella: { label: "Nutella", emoji: "🌰", storage: "fridge", pack: { units: 4, priceCents: 400 } },
-  potatoes: { label: "Patate", emoji: "🥔", storage: "fridge", pack: { units: 3, priceCents: 800 } },
-  cherryTomatoes: { label: "Pomodorini", emoji: "🍅", storage: "fridge", pack: { units: 3, priceCents: 900 } },
-  leeks: { label: "Porri", emoji: "🧅", storage: "fridge", pack: { units: 3, priceCents: 500 } },
-  peanutButter: { label: "Burro d'arachidi", emoji: "🥜", storage: "fridge", pack: { units: 3, priceCents: 500 } },
-  veganMince: { label: "Macinato vegetale", emoji: "🌱", storage: "fridge", pack: { units: 3, priceCents: 600 } },
-  carrots: { label: "Carote", emoji: "🥕", storage: "fridge", pack: { units: 3, priceCents: 700 } },
-  freshPasta: { label: "Tagliatelle fresche", emoji: "🌾", storage: "fridge", pack: { units: 3, priceCents: 500 } },
-  biscuits: { label: "Biscotti", emoji: "🍪", storage: "fridge", pack: { units: 3, priceCents: 600 } },
-  creamCheese: { label: "Formaggio spalmabile", emoji: "🧀", storage: "fridge", pack: { units: 3, priceCents: 600 } },
-  berries: { label: "Frutti di bosco", emoji: "🫐", storage: "freezer", pack: { units: 3, priceCents: 600 } },
+  cola: { label: "Coca-Cola", emoji: "🥤", storage: "fridge", pack: { units: 4, priceCents: 300 } },
+  lentils: { label: "Lenticchie", emoji: "🥫", storage: "fridge", pack: { units: 2, priceCents: 200 } },
+  coconutMilk: { label: "Latte di cocco", emoji: "🥥", storage: "fridge", pack: { units: 2, priceCents: 200 } },
+  bread: { label: "Pane", emoji: "🥖", storage: "fridge", pack: { units: 2, priceCents: 200 } },
+  nutella: { label: "Nutella", emoji: "🫙", storage: "fridge", pack: { units: 2, priceCents: 200 } },
+  groundCoffee: { label: "Caffè macinato", emoji: "🫘", storage: "fridge", pack: { units: 2, priceCents: 350 } },
+  eggs: { label: "Uova", emoji: "🥚", storage: "fridge", pack: { units: 2, priceCents: 350 } },
+  frozenFries: { label: "Patatine surgelate", emoji: "❄️", storage: "freezer", pack: { units: 2, priceCents: 350 } },
+  noodles: { label: "Noodles", emoji: "🥡", storage: "fridge", pack: { units: 2, priceCents: 300 } },
+  cashews: { label: "Anacardi", emoji: "🌰", storage: "fridge", pack: { units: 2, priceCents: 300 } },
+  cherryTomatoes: { label: "Pomodorini", emoji: "🍅", storage: "fridge", pack: { units: 2, priceCents: 550 } },
+  leeks: { label: "Porri", emoji: "🧅", storage: "fridge", pack: { units: 2, priceCents: 300 } },
+  peanutButter: { label: "Burro d'arachidi", emoji: "🥜", storage: "fridge", pack: { units: 2, priceCents: 300 } },
+  veganMince: { label: "Macinato vegetale", emoji: "🌱", storage: "fridge", pack: { units: 2, priceCents: 250 } },
+  carrots: { label: "Carote", emoji: "🥕", storage: "fridge", pack: { units: 2, priceCents: 550 } },
+  freshPasta: { label: "Tagliatelle fresche", emoji: "🌾", storage: "fridge", pack: { units: 2, priceCents: 250 } },
+  biscuits: { label: "Biscotti", emoji: "🍪", storage: "fridge", pack: { units: 2, priceCents: 350 } },
+  creamCheese: { label: "Formaggio spalmabile", emoji: "🧀", storage: "fridge", pack: { units: 2, priceCents: 350 } },
+  berries: { label: "Frutti di bosco", emoji: "🫐", storage: "freezer", pack: { units: 2, priceCents: 350 } },
 } as const satisfies Record<string, Ingredient>;
 export type IngredientId = keyof typeof INGREDIENTS;
 export const INGREDIENT_IDS = Object.keys(INGREDIENTS) as IngredientId[];
@@ -85,8 +94,9 @@ interface Recipe {
    */
   steps: RecipeStep[];
   /**
-   * Restaurant level at which the recipe is learnt (see LEVEL_XP). It goes on the menu, so customers
-   * order it and its ingredients can be ordered, once the kitchen also has the appliances it needs.
+   * Restaurant level at which the recipe is learnt, one level per shift passed. It goes straight on
+   * the menu: customers order it (and its ingredients can be ordered) even if the kitchen doesn't
+   * have the appliances it needs yet, so they have to be bought.
    */
   unlockLevel: number;
 }
@@ -119,11 +129,11 @@ export const RECIPES: Record<MenuItemId, Recipe> = {
     steps: [{ at: "workbench", label: "Taglia e spalma", ms: 3000 }],
     unlockLevel: 2,
   },
-  airFriedPotatoes: {
-    ingredients: ["potatoes"],
+  noodles: {
+    ingredients: ["noodles", "cashews"],
     steps: [
-      { at: "workbench", label: "Taglia a spicchi", ms: 3000 },
-      { at: "airFryer", label: "Cuoci ad aria", ms: 9000 },
+      { at: "workbench", label: "Trita gli anacardi", ms: 2000 },
+      { at: "stove", label: "Salta nel wok", ms: 6000 },
     ],
     unlockLevel: 6,
   },

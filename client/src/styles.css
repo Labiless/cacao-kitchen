@@ -138,13 +138,19 @@ input {
   padding: 16px;
   background: rgb(43 29 20 / 0.6);
 }
-.dialog { width: min(340px, 100%); }
+.dialog {
+  width: min(340px, 100%);
+  /* Long lists (phone, computer, recipe book…) scroll inside the popup instead of running off screen. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .dialog h2 { margin: 0; font-size: 20px; }
 .storage-dialog { width: min(340px, 100%); }
 .appliance-dialog { width: min(400px, 100%); }
 .recipe-choices { display: flex; flex-direction: column; gap: 8px; }
 .recipe-book, .computer-dialog { width: min(480px, 100%); max-height: calc(100vh - 32px); }
-.recipe-book-pages { overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.recipe-book-pages { display: flex; flex-direction: column; gap: 14px; }
 .recipe-book h3 { margin: 0 0 6px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .recipe-steps {
   margin: 4px 0 0;
@@ -303,24 +309,25 @@ button.danger { background: #c0392b; }
 }
 .shift-score .stars { font-size: 24px; color: #d99a00; letter-spacing: 1px; }
 
-.level { display: flex; align-items: center; gap: 8px; }
-.xp-bar { width: 60px; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
-.xp-bar span { display: block; height: 100%; background: #d99a00; }
 
-.toast {
-  position: absolute;
-  top: 72px;
-  left: 50%;
-  transform: translateX(-50%);
+.locked { opacity: 0.6; }
+.level-up {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px 16px;
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--ink);
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #2e7d4f 12%, white);
   font-size: 14px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
-  pointer-events: none;
 }
-.locked { opacity: 0.6; }
+.badge.missing-badge { background: color-mix(in srgb, #c0392b 12%, white); color: #c0392b; }
+.upgrade {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #d99a00 12%, white);
+  font-size: 14px;
+}
+.upgrade > span { flex: 1; }

@@ -1,4 +1,17 @@
-import { MAX_STARS, Message, ROLE_INFO, SHIFT, formatMoney, formatStars, starIcons, type ShiftReport } from "@cacao/shared";
+import {
+  EQUIPMENT,
+  MAX_STARS,
+  MENU,
+  Message,
+  ROLE_INFO,
+  SHIFT,
+  formatMoney,
+  formatStars,
+  missingEquipment,
+  recipesAtLevel,
+  starIcons,
+  type ShiftReport,
+} from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { useRoomState } from "./useRoomState.ts";
 
@@ -37,8 +50,9 @@ export function ShiftDialog({ room }: Props) {
               Ogni turno dura {SHIFT.durationS / 60} minuti. Soldi, elettrodomestici e ricette restano da un giorno
               all'altro, la merce no: gli ingredienti vanno ordinati ogni giorno. Alla fine del turno si pagano le
               bollette: se la cassa va in rosso, il ristorante chiude. Ogni cliente che si siede lascia una recensione da 1 a 5 stelle, in base a quanto
-              ha aspettato e a quanto è bella la sala (pulita e decorata): la media dei turni fa le stelle del ristorante,
-              e ogni stella di chi paga fa salire di livello e imparare nuove ricette.
+              ha aspettato e a quanto è bella la sala (pulita e decorata): la media dei turni fa le stelle del ristorante.
+              Ogni turno superato è un livello in più, con nuove ricette: i clienti le ordinano subito, quindi
+              procuratevi gli elettrodomestici che servono.
             </p>
           </>
         ) : (
@@ -94,7 +108,7 @@ export function ShiftDialog({ room }: Props) {
                 ⭐ Il ristorante ha {formatStars(stars)} stelle, media di {ratedShifts} {ratedShifts === 1 ? "turno" : "turni"}.
               </p>
             )}
-            <p className="hint">🏅 +{report.xp} punti esperienza · livello {level}</p>
+            {report.newLevel > 0 && <LevelUp room={room} level={report.newLevel} />}
             <p className="hint">
               😊 {report.paid} {report.paid === 1 ? "cliente ha pagato" : "clienti hanno pagato"} · 😠 {report.lost}{" "}
               {report.lost === 1 ? "è andato via scontento" : "sono andati via scontenti"}
@@ -139,4 +153,27 @@ function ReportRow({ label, cents }: { label: string; cents: number }) {
 function signed(cents: number) {
   if (cents === 0) return formatMoney(0);
   return `${cents > 0 ? "+" : "−"}${formatMoney(Math.abs(cents))}`;
+}
+
+/** "Level N!" with the recipes it adds to the menu, and what the kitchen still needs to make them. */
+function LevelUp({ room, level }: { room: KitchenRoom; level: number }) {
+  return (
+    <div className="level-up">
+      <strong>🎉 Turno superato: livello {level}!</strong>
+      {recipesAtLevel(level).map((id) => {
+        const needs = missingEquipment(room.state, id);
+        return (
+          <span key={id}>
+            Nuova ricetta nel menù: {MENU[id].emoji} {MENU[id].label}
+            {needs.length > 0 && (
+              <small className="recipe missing">
+                I clienti la ordineranno già dal prossimo turno: serve{" "}
+                {needs.map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}
+              </small>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
 }

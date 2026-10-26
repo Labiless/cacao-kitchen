@@ -21,8 +21,8 @@ interface Props {
 const LEVELS = Array.from({ length: MAX_LEVEL }, (_, i) => i + 1).filter((level) => recipesAtLevel(level).length);
 
 /**
- * Every recipe, by the restaurant level that teaches it. A known recipe goes on the menu once the
- * kitchen has the appliances it needs, which are bought on the computer.
+ * Every recipe, by the restaurant level that puts it on the menu, and what the kitchen still needs
+ * to make the ones already on it.
  */
 export function RecipeBookDialog({ room, onClose }: Props) {
   const level = useRoomState(room, (state) => state.level);
@@ -44,8 +44,8 @@ export function RecipeBookDialog({ room, onClose }: Props) {
       <div className="card dialog recipe-book" role="dialog" aria-label="Libro delle ricette">
         <h2>📖 Libro delle ricette</h2>
         <small className="hint">
-          Le ricette si imparano salendo di livello, con i clienti soddisfatti. Una ricetta imparata va nel menù appena
-          la cucina ha gli elettrodomestici che servono (dal computer). Il ristorante è al livello {level}.
+          Ogni turno superato è un livello in più, e ogni livello mette nel menù nuove ricette: i clienti le ordinano
+          subito, anche se in cucina manca un elettrodomestico (si compra dal computer). Il ristorante è al livello {level}.
         </small>
         <div className="recipe-book-pages">
           {LEVELS.map((unlockLevel) => (
@@ -74,7 +74,7 @@ export function RecipeBookDialog({ room, onClose }: Props) {
                       {unlockLevel > level ? (
                         <span className="badge waiting">Livello {unlockLevel}</span>
                       ) : needs.length ? (
-                        <span className="badge waiting">Da attrezzare</span>
+                        <span className="badge missing-badge">Manca attrezzatura</span>
                       ) : (
                         <span className="badge">Nel menù</span>
                       )}

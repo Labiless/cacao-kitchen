@@ -84,6 +84,8 @@ export const Appliance = schema({
   status: t.string<ApplianceStatus>().default("idle"),
   /** The dish whose step is in progress or done; "" when idle. */
   dish: t.string<MenuItemId | "">().default(""),
+  /** Its level, 1 to MAX_APPLIANCE_TIER: higher levels make steps quicker (see stepMs). */
+  tier: t.uint8().default(1),
   /** Index into the dish's recipe steps of the step in progress or done. */
   step: t.uint8().default(0),
   /** Freshness of a finished dish waiting on it: 1 = just cooked, 0 = thrown away. See DISH_FRESH_S. */
@@ -129,8 +131,8 @@ export const ShiftReport = schema({
   /** Customers who paid, and customers who left unhappy without paying. */
   paid: t.number().default(0),
   lost: t.number().default(0),
-  /** Experience earned in the shift. */
-  xp: t.number().default(0),
+  /** Level reached by passing this shift, or 0 if it didn't go up (game over, or already at the top). */
+  newLevel: t.number().default(0),
   /** Sum and number of the reviews left during the shift: the shift's score is their average. */
   ratingSum: t.number().default(0),
   ratingCount: t.number().default(0),
@@ -166,8 +168,7 @@ export const KitchenState = schema({
   /** Units of each ingredient in the fridge or freezer (see INGREDIENTS[id].storage), by IngredientId. */
   stock: t.map("number"),
   delivery: Delivery,
-  /** Experience from happy customers, and the level it gives (see LEVEL_XP): the level decides the recipes known. */
-  xp: t.number().default(0),
+  /** One more for every shift passed (see nextLevel): the level decides which recipes are on the menu. */
   level: t.number().default(1),
   shift: Shift,
   /** The restaurant's stars: the average score of every shift that got reviews; 0 before the first. */

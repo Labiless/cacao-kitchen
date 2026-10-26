@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MENU, Message, tableLabel, type DiscardTicketMessage } from "@cacao/shared";
+import { EQUIPMENT, MENU, Message, missingEquipment, tableLabel, type DiscardTicketMessage } from "@cacao/shared";
 import type { KitchenRoom } from "../network.ts";
 import { RecipeSteps } from "./RecipeSteps.tsx";
 import { sounds } from "../game/Sounds.ts";
@@ -52,6 +52,12 @@ export function TicketDialog({ room, ticketId, onClose }: Props) {
             1 × {MENU[ticket.item].emoji} {MENU[ticket.item].label}
           </p>
           <RecipeSteps dish={ticket.item} />
+          {missingEquipment(room.state, ticket.item).length > 0 && (
+            <p className="error">
+              In cucina manca:{" "}
+              {missingEquipment(room.state, ticket.item).map((kind) => `${EQUIPMENT[kind].emoji} ${EQUIPMENT[kind].label}`).join(", ")}
+            </p>
+          )}
         </div>
 
         <div className="dialog-actions">

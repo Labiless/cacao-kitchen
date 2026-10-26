@@ -34,7 +34,7 @@ import {
   INGREDIENT_IDS,
   STARTING_MONEY_CENTS,
   SHIFT,
-  levelForXp,
+  nextLevel,
   ShiftReport,
   tipFor,
   REVIEWED_WAITS,
@@ -44,7 +44,7 @@ import {
   Decoration,
   canPlaceDecoration,
   isDecoration,
-  overlapsDecorations,
+  patienceSeconds,
   type BuyDecorationMessage,
   type ReviewedWait,
   MAX_HELD_INGREDIENTS,
@@ -68,6 +68,8 @@ import {
   cellCenter,
   EQUIPMENT,
   STARTING_EQUIPMENT,
+  stepMs,
+  upgradePrice,
   Appliance,
   PassDish,
   PASS,
@@ -86,6 +88,7 @@ import {
   type InputState,
   type EquipmentId,
   type StartRecipeMessage,
+  type UpgradeApplianceMessage,
   type CustomerStatus,
   type BuyEquipmentMessage,
   type DishSpoiledMessage,
@@ -291,6 +294,19 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.startStep(appliance, dish, 0);
     });
 
+    this.onShiftMessage(Message.UpgradeAppliance, (client, message: UpgradeApplianceMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      const appliance = this.state.appliances.get(String(message?.applianceId));
+      if (player?.role !== "kitchen" || !appliance || !isNearAppliance(player, appliance)) return;
+      const price = upgradePrice(appliance.kind, appliance.tier);
+      if (price === null || this.state.money < price) return;
+
+      // A step already in progress keeps its time; the next ones are quicker.
+      this.state.money -= price;
+      this.state.shift.report.improvementsCents += price;
+      appliance.tier++;
+    });
+
     this.onShiftMessage(Message.BuyDecoration, (client, message: BuyDecorationMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (player?.role !== "hall" || !isNearComputer(player) || !isDecoration(message?.item)) return;
@@ -430,6 +446,11 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
       this.state.stars = (this.state.stars * this.state.ratedShifts + score) / (this.state.ratedShifts + 1);
       this.state.ratedShifts++;
     }
+    // A shift passed is a level passed, and new recipes on the menu.
+    if (!bankrupt && nextLevel(this.state.level) > this.state.level) {
+      this.state.level = nextLevel(this.state.level);
+      report.newLevel = this.state.level;
+    }
     shift.phase = bankrupt ? "gameOver" : "break";
     shift.secondsLeft = 0;
   }
@@ -438,7 +459,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private restartGame() {
     const { state } = this;
     state.money = STARTING_MONEY_CENTS;
-    state.xp = 0;
     state.level = 1;
     state.stars = 0;
     state.ratedShifts = 0;
@@ -481,7 +501,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     appliance.dish = dish;
     appliance.step = step;
     appliance.freshness = 0;
-    this.applianceReadyAt.set(appliance.id, this.clock.currentTime + RECIPES[dish].steps[step].ms);
+    this.applianceReadyAt.set(appliance.id, this.clock.currentTime + stepMs(RECIPES[dish].steps[step].ms, appliance.tier));
   }
 
   /** Whether the step on the appliance is the last of its recipe, so what's on it is the finished dish. */
@@ -617,10 +637,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
         report.tipsCents += customer.tip;
         report.paid++;
         this.sendAway(customer);
-        // As much experience as the stars they just gave (sendAway sets the review).
-        this.state.xp += customer.rating;
-        report.xp += customer.rating;
-        this.state.level = levelForXp(this.state.xp);
         break;
       }
       case "receiveDelivery": {
@@ -737,7 +753,6 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
 
   private hitsObstacle(x: number, y: number) {
     if (overlapsKitchenFurniture({ x, y }, this.state.appliances.values()) || overlapsHallFurniture({ x, y })) return true;
-    if (overlapsDecorations({ x, y }, [...this.state.decorations.values()].map((d) => d.slot))) return true;
     for (const table of this.state.tables.values()) {
       if (overlapsTable({ x, y }, table)) return true;
     }
@@ -763,7 +778,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
     }
 
     this.state.customers.forEach((customer) => {
-      const patienceS = CUSTOMER_TIMING.patienceS[customer.status];
+      const patienceS = patienceSeconds(customer.status, customer.wants);
       if (patienceS) {
         // The longer the line they're in, the faster they lose patience.
         const lineLength = customer.status === "waiting" ? line.length
@@ -822,7 +837,7 @@ export class KitchenRoom extends Room<{ state: KitchenState }> {
   private setCustomerStatus(customer: Customer, status: CustomerStatus) {
     this.recordWait(customer);
     customer.status = status;
-    if (CUSTOMER_TIMING.patienceS[status]) customer.patience = 1;
+    if (patienceSeconds(status, customer.wants)) customer.patience = 1;
 
     const timed = TIMED_STATUSES[status];
     if (timed) this.statusEndsAt.set(customer.id, this.clock.currentTime + timed.seconds * 1000);

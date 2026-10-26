@@ -13,7 +13,7 @@ export type ShiftPhase = (typeof SHIFT_PHASES)[number];
 
 export const SHIFT = {
   /** How long the restaurant stays open to new customers. */
-  durationS: 300,
+  durationS: 240,
   /** Wages, paid at the end of every shift. Nothing yet: there's no staff to hire. */
   staffCents: 0,
   /** Electricity, paid at the end of every shift for each appliance, the fridge included. */
