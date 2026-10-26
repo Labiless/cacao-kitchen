@@ -331,3 +331,9 @@ button.danger { background: #c0392b; }
   font-size: 14px;
 }
 .upgrade > span { flex: 1; }
+
+/* Popups can be driven with the arrows and E: make the selected button obvious. */
+.dialog button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}

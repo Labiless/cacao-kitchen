@@ -23,7 +23,7 @@ export function NameDialog({ room, onDone }: Props) {
 
   return (
     <div className="backdrop">
-      <form className="card dialog" onSubmit={submit}>
+      <form className="card dialog" role="dialog" aria-label="Il tuo nome" onSubmit={submit}>
         <h2>Benvenuto!</h2>
         {role && (
           <p className="hint">

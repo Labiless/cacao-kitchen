@@ -49,7 +49,8 @@ export function ApplianceDialog({ room, applianceId, onClose }: Props) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
-      if (event.key === "Enter") start();
+      // Enter on a focused button already presses that button.
+      if (event.key === "Enter" && !(document.activeElement instanceof HTMLButtonElement)) start();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
