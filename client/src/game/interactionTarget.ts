@@ -1,7 +1,6 @@
 import {
   APPLIANCE_SIZE,
   COMPUTER,
-  CUSTOMER_SIZE,
   DELIVERY_BAY,
   FRIDGE,
   PASS,
@@ -24,13 +23,13 @@ function furniture(kind: string, box: Box, id = ""): Target {
 
 /**
  * What to outline for an interaction (a customer, a table, a ticket, an appliance, a piece of
- * furniture) and where its edges are, to place the hint. `customerPosition` is where a customer is
- * drawn right now, since their sprite catches up with the server smoothly.
+ * furniture) and where its edges are, to place the hint. `customerBox` is where a customer is drawn
+ * right now (their sprite catches up with the server smoothly) and how tall.
  */
 export function interactionTarget(
   interaction: Interaction,
   state: KitchenState,
-  customerPosition: (id: string) => { x: number; y: number } | undefined,
+  customerBox: (id: string) => { x: number; top: number; bottom: number } | undefined,
 ): Target | null {
   switch (interaction.kind) {
     case "readTicket": {
@@ -71,9 +70,6 @@ export function interactionTarget(
   }
 
   const customerId = "customerId" in interaction ? interaction.customerId : undefined;
-  const position = customerId && customerPosition(customerId);
-  if (!customerId || !position) return null;
-  const half = CUSTOMER_SIZE / 2;
-  // The hint goes a little higher, to clear the patience bar.
-  return { kind: "customer", id: customerId, x: position.x, top: position.y - half - 12, bottom: position.y + half };
+  const box = customerId && customerBox(customerId);
+  return customerId && box ? { kind: "customer", id: customerId, ...box } : null;
 }

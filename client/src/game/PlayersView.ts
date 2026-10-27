@@ -5,19 +5,20 @@ import {
   SMOOTHING,
   TEXT_STYLE,
   levelColor,
+  peopleDepth,
   type RoomCallbacks,
   type Unsubscribe,
   type ViewContext,
 } from "./sceneStyle.ts";
 import {
-  FRAME_SIZE,
-  SPRITE_SCALE,
+  addCharacter,
+  animateWalk,
   directionOf,
-  idleFrame,
-  textureKey,
-  walkAnimation,
+  heightAboveFeet,
+  playerSheet,
   type Direction,
-} from "./playerSprites.ts";
+  type SheetKey,
+} from "./characterSprites.ts";
 
 interface PlayerSprite {
   /** Where the player is drawn: the center of their collision square, catching up with the server. */
@@ -26,6 +27,7 @@ interface PlayerSprite {
   target: { x: number; y: number };
   /** The character, standing on the bottom edge of the collision square. */
   sprite: Phaser.GameObjects.Sprite;
+  sheet: SheetKey;
   /** Which way they last moved, to stand still facing that way. */
   facing: Direction;
   /** A colored patch under the local player's feet, to spot yourself at a glance. */
@@ -37,8 +39,6 @@ interface PlayerSprite {
 
 /** Below this distance (px) from where the server has them, a player counts as standing still. */
 const MOVING_THRESHOLD = 1;
-/** Height of the drawn character above the bottom of the collision square, for the name above their head. */
-const SPRITE_HEIGHT = FRAME_SIZE * SPRITE_SCALE - 20;
 
 /** A timed action in progress, for its progress bar. */
 export interface ActionInProgress {
@@ -89,25 +89,20 @@ export class PlayersView {
     const { room } = this.ctx;
     const t = 1 - Math.pow(1 - SMOOTHING, delta / (1000 / 60));
     for (const [sessionId, entry] of this.sprites) {
-      const { pos, target, sprite, marker, label, held } = entry;
+      const { pos, target, sprite, sheet, marker, label, held } = entry;
       const player = room.state.players.get(sessionId);
       const dx = target.x - pos.x;
       const dy = target.y - pos.y;
       const moving = Math.hypot(dx, dy) > MOVING_THRESHOLD;
       if (moving) entry.facing = directionOf(dx, dy);
-      if (player && moving) sprite.play(walkAnimation(player.role, entry.facing), true);
-      // Frames of a sheet are named by their index: compare as strings to be safe.
-      else if (sprite.anims.isPlaying || String(sprite.frame.name) !== String(idleFrame(entry.facing))) {
-        sprite.stop();
-        sprite.setFrame(idleFrame(entry.facing));
-      }
+      animateWalk(sprite, sheet, entry.facing, moving);
 
       pos.x = Phaser.Math.Linear(pos.x, target.x, t);
       pos.y = Phaser.Math.Linear(pos.y, target.y, t);
       const feet = pos.y + PLAYER_SIZE / 2;
-      sprite.setPosition(pos.x, feet);
+      sprite.setPosition(pos.x, feet).setDepth(peopleDepth(feet));
       marker?.setPosition(pos.x, feet - 3);
-      label.setPosition(pos.x, feet - SPRITE_HEIGHT - 4);
+      label.setPosition(pos.x, feet - heightAboveFeet(sheet) - 2);
       // setText is a no-op when nothing changed; `holding` is a list, so it's simplest to check every frame.
       if (player) held.setText(this.heldIcon(player)).setAlpha(isHalfMade(player.holding[0]) ? 0.55 : 1);
       held.setPosition(pos.x + PLAYER_SIZE / 2 - 4, pos.y + PLAYER_SIZE / 2 - 4);
@@ -150,12 +145,8 @@ export class PlayersView {
     const { scene, room } = this.ctx;
     const facing: Direction = "down";
     const feet = player.y + PLAYER_SIZE / 2;
-
-    const sprite = scene.add
-      .sprite(player.x, feet, textureKey(player.role), idleFrame(facing))
-      .setOrigin(0.5, 1)
-      .setScale(SPRITE_SCALE)
-      .setDepth(Depth.Player);
+    const sheet = playerSheet(player.role);
+    const sprite = addCharacter(scene, sheet, player.x, feet).setDepth(peopleDepth(feet));
     const color = Phaser.Display.Color.HexStringToColor(player.color).color;
     const marker = sessionId === room.sessionId
       ? scene.add.ellipse(player.x, feet - 3, PLAYER_SIZE - 4, 12, color, 0.55).setStrokeStyle(2, 0x3b2a1e).setDepth(Depth.Table)
@@ -171,6 +162,7 @@ export class PlayersView {
       pos: { x: player.x, y: player.y },
       target: { x: player.x, y: player.y },
       sprite,
+      sheet,
       facing,
       marker,
       label,

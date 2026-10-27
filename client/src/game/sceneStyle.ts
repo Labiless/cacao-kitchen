@@ -10,6 +10,11 @@ import type { SoundName } from "./Sounds.ts";
 /** Draw order: floor < tables < people < labels and bars < placement overlay. */
 export const Depth = { Table: 1, Player: 2, Label: 3, Overlay: 4 } as const;
 
+/** People (players and customers) lower on screen are drawn in front of those higher up. */
+export function peopleDepth(feetY: number) {
+  return Depth.Player + feetY / 10_000;
+}
+
 export const TEXT_STYLE = { fontFamily: "system-ui, sans-serif", color: "#3b2a1e" } as const;
 export const HIGHLIGHT = { width: 4, color: 0xfff3c4 } as const;
 

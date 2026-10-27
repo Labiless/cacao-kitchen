@@ -17,7 +17,7 @@ import { Placement, type PlacementItem } from "./Placement.ts";
 import { sounds, type SoundName } from "./Sounds.ts";
 import { interactionTarget } from "./interactionTarget.ts";
 import { drawMap } from "./mapDrawing.ts";
-import { createPlayerAnimations, loadPlayerSprites } from "./playerSprites.ts";
+import { createCharacterAnimations, loadCharacterSprites } from "./characterSprites.ts";
 import { Bars, Depth, TEXT_STYLE, roomCallbacks, type Unsubscribe, type ViewContext } from "./sceneStyle.ts";
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
@@ -67,12 +67,12 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   preload() {
-    loadPlayerSprites(this);
+    loadCharacterSprites(this);
   }
 
   create() {
     drawMap(this);
-    createPlayerAnimations(this);
+    createCharacterAnimations(this);
 
     this.bars = new Bars(this.add.graphics().setDepth(Depth.Label));
     const ctx: ViewContext = {
@@ -203,7 +203,7 @@ export class KitchenScene extends Phaser.Scene {
   /** Outlines what the local player can act on and shows which key to press. */
   private drawInteractionHint() {
     const interaction = this.placement.active ? null : this.currentInteraction();
-    const target = interaction && interactionTarget(interaction, this.room.state, (id) => this.hall.customerPosition(id));
+    const target = interaction && interactionTarget(interaction, this.room.state, (id) => this.hall.customerBox(id));
     this.hall.highlight(target);
     this.kitchen.highlight(target);
 
