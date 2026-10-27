@@ -17,6 +17,7 @@ import { Placement, type PlacementItem } from "./Placement.ts";
 import { sounds, type SoundName } from "./Sounds.ts";
 import { interactionTarget } from "./interactionTarget.ts";
 import { drawMap } from "./mapDrawing.ts";
+import { createPlayerAnimations, loadPlayerSprites } from "./playerSprites.ts";
 import { Bars, Depth, TEXT_STYLE, roomCallbacks, type Unsubscribe, type ViewContext } from "./sceneStyle.ts";
 
 const NO_INPUT: InputState = { left: false, right: false, up: false, down: false };
@@ -65,8 +66,13 @@ export class KitchenScene extends Phaser.Scene {
     super("kitchen");
   }
 
+  preload() {
+    loadPlayerSprites(this);
+  }
+
   create() {
     drawMap(this);
+    createPlayerAnimations(this);
 
     this.bars = new Bars(this.add.graphics().setDepth(Depth.Label));
     const ctx: ViewContext = {
